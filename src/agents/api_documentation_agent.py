@@ -1,6 +1,6 @@
 """
-Technical Documentation Agent
-Generates technical specifications and architecture documentation
+API Documentation Agent
+Generates comprehensive API documentation
 """
 from typing import Optional
 from datetime import datetime
@@ -9,20 +9,21 @@ from src.utils.file_manager import FileManager
 from src.context.context_manager import ContextManager
 from src.context.shared_context import AgentType, DocumentStatus, AgentOutput
 from src.rate_limit.queue_manager import RequestQueue
-from prompts.system_prompts import get_technical_prompt
+from prompts.system_prompts import get_api_prompt
 
 
-class TechnicalDocumentationAgent(BaseAgent):
+class APIDocumentationAgent(BaseAgent):
     """
-    Technical Documentation Agent
+    API Documentation Agent
     
-    Generates technical documentation including:
-    - System architecture
-    - Technical stack recommendations
-    - Database design
-    - API design
-    - Security considerations
-    - Deployment architecture
+    Generates API documentation including:
+    - API overview and versioning
+    - Authentication methods
+    - All endpoints with examples
+    - Data models and schemas
+    - Rate limiting
+    - Error handling
+    - SDKs and code examples
     """
     
     def __init__(
@@ -34,7 +35,7 @@ class TechnicalDocumentationAgent(BaseAgent):
         api_key: Optional[str] = None,
         **provider_kwargs
     ):
-        """Initialize Technical Documentation Agent"""
+        """Initialize API Documentation Agent"""
         super().__init__(
             provider_name=provider_name,
             model_name=model_name,
@@ -43,48 +44,50 @@ class TechnicalDocumentationAgent(BaseAgent):
             **provider_kwargs
         )
         
-        self.file_manager = file_manager or FileManager(base_dir="docs/technical")
+        self.file_manager = file_manager or FileManager(base_dir="docs/api")
     
-    def generate(self, requirements_summary: dict) -> str:
+    def generate(self, requirements_summary: dict, technical_summary: Optional[str] = None) -> str:
         """
-        Generate technical documentation from requirements
+        Generate API documentation from requirements and technical specs
         
         Args:
             requirements_summary: Summary from Requirements Analyst
-                Should contain: user_idea, project_overview, core_features, technical_requirements
+            technical_summary: Optional technical documentation summary
         
         Returns:
-            Generated technical documentation (Markdown)
+            Generated API documentation (Markdown)
         """
         # Get prompt from centralized prompts config
-        full_prompt = get_technical_prompt(requirements_summary)
+        full_prompt = get_api_prompt(requirements_summary, technical_summary)
         
-        print(f"🤖 {self.agent_name} is generating technical documentation...")
+        print(f"🤖 {self.agent_name} is generating API documentation...")
         print("⏳ This may take a moment (rate limited)...")
         
         stats = self.get_stats()
         print(f"📊 Rate limit status: {stats['requests_in_window']}/{stats['max_rate']} requests in window")
         
         try:
-            technical_doc = self._call_llm(full_prompt)
-            print("✅ Technical documentation generated!")
-            return technical_doc
+            api_doc = self._call_llm(full_prompt)
+            print("✅ API documentation generated!")
+            return api_doc
         except Exception as e:
-            print(f"❌ Error generating technical documentation: {e}")
+            print(f"❌ Error generating API documentation: {e}")
             raise
     
     def generate_and_save(
         self,
         requirements_summary: dict,
-        output_filename: str = "technical_spec.md",
+        technical_summary: Optional[str] = None,
+        output_filename: str = "api_documentation.md",
         project_id: Optional[str] = None,
         context_manager: Optional[ContextManager] = None
     ) -> str:
         """
-        Generate technical documentation and save to file
+        Generate API documentation and save to file
         
         Args:
             requirements_summary: Summary from Requirements Analyst
+            technical_summary: Optional technical documentation summary
             output_filename: Filename to save
             project_id: Project ID for context sharing
             context_manager: Context manager for saving
@@ -93,11 +96,11 @@ class TechnicalDocumentationAgent(BaseAgent):
             Absolute path to saved file
         """
         # Generate documentation
-        technical_doc = self.generate(requirements_summary)
+        api_doc = self.generate(requirements_summary, technical_summary)
         
         # Save to file
         try:
-            file_path = self.file_manager.write_file(output_filename, technical_doc)
+            file_path = self.file_manager.write_file(output_filename, api_doc)
             file_size = self.file_manager.get_file_size(output_filename)
             print(f"✅ File written successfully to {file_path}")
             print(f"📄 File saved: {output_filename} ({file_size} bytes)")
@@ -105,15 +108,15 @@ class TechnicalDocumentationAgent(BaseAgent):
             # Save to context if available
             if project_id and context_manager:
                 output = AgentOutput(
-                    agent_type=AgentType.TECHNICAL_DOCUMENTATION,
-                    document_type="technical_spec",
-                    content=technical_doc,
+                    agent_type=AgentType.API_DOCUMENTATION,
+                    document_type="api_documentation",
+                    content=api_doc,
                     file_path=file_path,
                     status=DocumentStatus.COMPLETE,
                     generated_at=datetime.now()
                 )
                 context_manager.save_agent_output(project_id, output)
-                print(f"✅ Technical documentation saved to shared context (project: {project_id})")
+                print(f"✅ API documentation saved to shared context (project: {project_id})")
             
             return file_path
         except Exception as e:

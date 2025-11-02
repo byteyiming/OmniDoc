@@ -109,8 +109,7 @@ class PMDocumentationAgent(BaseAgent):
                     content=pm_doc,
                     file_path=file_path,
                     status=DocumentStatus.COMPLETE,
-                    generated_at=datetime.now(),
-                    dependencies=["requirements"]  # Depends on requirements
+                    generated_at=datetime.now()
                 )
                 context_manager.save_agent_output(project_id, output)
                 print(f"✅ PM documentation saved to shared context (project: {project_id})")

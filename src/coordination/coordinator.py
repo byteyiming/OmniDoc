@@ -11,6 +11,7 @@ from src.context.shared_context import AgentType, DocumentStatus, SharedContext
 from src.agents.requirements_analyst import RequirementsAnalyst
 from src.agents.pm_documentation_agent import PMDocumentationAgent
 from src.agents.technical_documentation_agent import TechnicalDocumentationAgent
+from src.agents.api_documentation_agent import APIDocumentationAgent
 from src.rate_limit.queue_manager import RequestQueue
 
 
@@ -43,6 +44,7 @@ class WorkflowCoordinator:
         self.requirements_analyst = RequirementsAnalyst(rate_limiter=self.rate_limiter)
         self.pm_agent = PMDocumentationAgent(rate_limiter=self.rate_limiter)
         self.technical_agent = TechnicalDocumentationAgent(rate_limiter=self.rate_limiter)
+        self.api_agent = APIDocumentationAgent(rate_limiter=self.rate_limiter)
     
     def generate_all_docs(self, user_idea: str, project_id: Optional[str] = None) -> Dict:
         """
@@ -128,6 +130,28 @@ class WorkflowCoordinator:
             )
             results["files"]["technical_documentation"] = technical_path
             results["status"]["technical_documentation"] = "complete"
+            print()
+            
+            # Step 5: Get technical documentation for API agent
+            print("📖 Step 5: Retrieving technical documentation for API agent...")
+            print("-" * 60)
+            technical_output = self.context_manager.get_agent_output(project_id, AgentType.TECHNICAL_DOCUMENTATION)
+            technical_summary = technical_output.content if technical_output else None
+            print("✅ Technical documentation retrieved")
+            print()
+            
+            # Step 6: API Documentation Agent
+            print("🔌 Step 6: Generating API Documentation...")
+            print("-" * 60)
+            api_path = self.api_agent.generate_and_save(
+                requirements_summary=req_summary,
+                technical_summary=technical_summary,
+                output_filename="api_documentation.md",
+                project_id=project_id,
+                context_manager=self.context_manager
+            )
+            results["files"]["api_documentation"] = api_path
+            results["status"]["api_documentation"] = "complete"
             print()
             
             # Summary

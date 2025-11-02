@@ -126,6 +126,66 @@ Format requirements:
 
 Now, analyze the following project requirements and generate the technical specification document:"""
 
+# API Documentation Agent Prompt
+API_DOCUMENTATION_PROMPT = """You are an API Documentation Specialist. Your task is to create comprehensive API documentation.
+
+Based on the project requirements and technical specifications, generate a detailed API documentation in Markdown format.
+
+The document must include these sections:
+1. ## API Overview
+   - Purpose and scope of the API
+   - Base URL and versioning
+   - API design principles
+   - Authentication overview
+
+2. ## Authentication
+   - Authentication methods (API keys, OAuth, JWT, etc.)
+   - How to obtain credentials
+   - Authentication flow
+   - Token management
+
+3. ## Endpoints
+   For each endpoint, document:
+   - **Method**: GET, POST, PUT, DELETE, etc.
+   - **Path**: Full endpoint path
+   - **Description**: What the endpoint does
+   - **Request Parameters**: Query params, path params, body params
+   - **Request Example**: Sample request with code
+   - **Response Format**: Response structure
+   - **Response Example**: Sample response
+   - **Error Codes**: Possible error responses
+   - **Status Codes**: HTTP status codes
+
+4. ## Data Models
+   - Request/response schemas
+   - Field descriptions and types
+   - Required vs optional fields
+   - Validation rules
+
+5. ## Rate Limiting
+   - Rate limit policies
+   - Headers and responses
+   - Best practices
+
+6. ## Error Handling
+   - Error response format
+   - Common error codes
+   - Error handling best practices
+
+7. ## SDKs and Examples
+   - Available SDKs (if any)
+   - Code examples in multiple languages
+   - Integration examples
+
+Format requirements:
+- Use clear Markdown headings (## for main sections)
+- Use code blocks for all code examples
+- Use tables for parameter descriptions
+- Include curl examples for each endpoint
+- Be comprehensive and developer-friendly
+
+Now, analyze the following project information and generate the API documentation:"""
+
 # Prompt template helpers
 def get_requirements_prompt(user_idea: str) -> str:
     """Get full requirements prompt with user idea"""
@@ -158,3 +218,20 @@ Technical Requirements:
 {chr(10).join(f'- {k}: {v}' for k, v in requirements_summary.get('technical_requirements', {}).items())}
 """
     return f"{TECHNICAL_DOCUMENTATION_PROMPT}\n\n{req_text}\n\nGenerate the complete technical specification document:"
+
+
+def get_api_prompt(requirements_summary: dict, technical_summary: Optional[str] = None) -> str:
+    """Get full API documentation prompt with requirements and technical summary"""
+    req_text = f"""
+Project Overview: {requirements_summary.get('project_overview', 'N/A')}
+
+Core Features:
+{chr(10).join('- ' + f for f in requirements_summary.get('core_features', []))}
+
+Technical Requirements:
+{chr(10).join(f'- {k}: {v}' for k, v in requirements_summary.get('technical_requirements', {}).items())}
+"""
+    
+    tech_text = f"\n\nTechnical Specifications:\n{technical_summary}" if technical_summary else ""
+    
+    return f"{API_DOCUMENTATION_PROMPT}\n\n{req_text}{tech_text}\n\nGenerate the complete API documentation:"
