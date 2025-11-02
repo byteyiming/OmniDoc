@@ -11,18 +11,24 @@ AI-powered documentation generation system that creates comprehensive documentat
 # Set API key
 echo "GEMINI_API_KEY=your_key" > .env
 
+# Option 1: Activate virtual environment
+source .venv/bin/activate
+
+# Option 2: Use uv run (no activation needed)
+# uv run python -m src.web.app
+
 # Run tests
 pytest tests/unit
 
 # Generate documentation (CLI)
-python -c "
+python3 -c "
 from src.coordination.coordinator import WorkflowCoordinator
 coordinator = WorkflowCoordinator()
 coordinator.generate_all_docs('Build a task management app')
 "
 
 # Or use web interface
-python -m src.web.app
+python3 -m src.web.app
 # Visit http://localhost:8000
 ```
 
@@ -115,12 +121,21 @@ results = coordinator.generate_all_docs(
 ### Use Web Interface
 
 ```bash
-# Start web server
-python -m src.web.app
+# Option 1: Activate virtual environment, then run
+source .venv/bin/activate
+python3 -m src.web.app
+
+# Option 2: Use uv run (no activation needed)
+uv run python -m src.web.app
 
 # Visit http://localhost:8000
 # Enter your project idea and generate docs!
 ```
+
+**Note:** 
+- On macOS, use `python3` instead of `python`
+- Or use `uv run` which automatically uses the correct Python environment
+- Or activate the virtual environment: `source .venv/bin/activate`
 
 ### Switch LLM Provider
 
