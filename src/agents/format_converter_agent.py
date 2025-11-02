@@ -224,45 +224,6 @@ class FormatConverterAgent(BaseAgent):
                 }
             ''')
             
-            if not output_path:
-                output_path = "documentation.pdf"
-            
-            # Ensure .pdf extension
-            if not output_path.endswith('.pdf'):
-                output_path = str(Path(output_path).with_suffix('.pdf'))
-            
-            # Enhanced CSS for PDF
-            pdf_css = CSS(string='''
-                @page {
-                    size: A4;
-                    margin: 2cm;
-                    @top-center {
-                        content: "Documentation";
-                    }
-                    @bottom-center {
-                        content: "Page " counter(page) " of " counter(pages);
-                    }
-                }
-                body {
-                    font-size: 11pt;
-                    line-height: 1.6;
-                }
-                h1 {
-                    page-break-after: avoid;
-                    margin-top: 1.5em;
-                }
-                h2 {
-                    page-break-after: avoid;
-                    margin-top: 1.2em;
-                }
-                pre {
-                    page-break-inside: avoid;
-                }
-                table {
-                    page-break-inside: avoid;
-                }
-            ''')
-            
             html_obj = HTML(string=html_content)
             pdf_path = self.file_manager.base_dir / output_path
             html_obj.write_pdf(pdf_path, stylesheets=[pdf_css])
