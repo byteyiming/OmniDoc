@@ -6,12 +6,18 @@ from prompts.system_prompts import (
     API_DOCUMENTATION_PROMPT,
     DEVELOPER_DOCUMENTATION_PROMPT,
     STAKEHOLDER_COMMUNICATION_PROMPT,
+    QUALITY_REVIEWER_PROMPT,
+    USER_DOCUMENTATION_PROMPT,
+    TEST_DOCUMENTATION_PROMPT,
     get_requirements_prompt,
     get_pm_prompt,
     get_technical_prompt,
     get_api_prompt,
     get_developer_prompt,
-    get_stakeholder_prompt
+    get_stakeholder_prompt,
+    get_quality_reviewer_prompt,
+    get_user_prompt,
+    get_test_prompt
 )
 
 __all__ = [
@@ -21,11 +27,17 @@ __all__ = [
     'API_DOCUMENTATION_PROMPT',
     'DEVELOPER_DOCUMENTATION_PROMPT',
     'STAKEHOLDER_COMMUNICATION_PROMPT',
+    'QUALITY_REVIEWER_PROMPT',
+    'USER_DOCUMENTATION_PROMPT',
+    'TEST_DOCUMENTATION_PROMPT',
     'get_requirements_prompt',
     'get_pm_prompt',
     'get_technical_prompt',
     'get_api_prompt',
     'get_developer_prompt',
-    'get_stakeholder_prompt'
+    'get_stakeholder_prompt',
+    'get_quality_reviewer_prompt',
+    'get_user_prompt',
+    'get_test_prompt'
 ]
 
