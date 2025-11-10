@@ -491,13 +491,14 @@ Improvement Suggestions:
             document_file_paths[AgentType.USER_STORIES] = stories_path
             
             # 4. TECHNICAL DOCUMENTATION (with quality gate)
+            # Note: PM documentation is generated in Phase 2, so we don't have it here
+            # Technical doc can be generated without PM summary (it's optional)
             user_stories_output = self.context_manager.get_agent_output(project_id, AgentType.USER_STORIES)
             user_stories_summary = user_stories_output.content if user_stories_output else stories_content
             
+            # PM summary is not available in Phase 1 (it's generated in Phase 2)
+            # Technical documentation can work without it
             pm_summary_for_tech = None
-            if profile == "team":
-                pm_output = self.context_manager.get_agent_output(project_id, AgentType.PM_DOCUMENTATION)
-                pm_summary_for_tech = pm_output.content if pm_output else None
             
             tech_path, tech_content = self._run_agent_with_quality_loop(
                 agent_instance=self.technical_agent,
@@ -505,7 +506,7 @@ Improvement Suggestions:
                 generate_kwargs={
                     "requirements_summary": req_summary,
                     "user_stories_summary": user_stories_summary,
-                    "pm_summary": pm_summary_for_tech
+                    "pm_summary": pm_summary_for_tech  # None - PM doc is generated in Phase 2
                 },
                 output_filename="technical_spec.md",
                 project_id=project_id,
