@@ -48,6 +48,32 @@ class CodeAnalystAgent(BaseAgent):
         
         self.file_manager = file_manager or FileManager()
     
+    def generate(self, input_data: str) -> str:
+        """
+        Generate documentation from codebase (required by BaseAgent)
+        
+        Args:
+            input_data: JSON string with 'codebase_path' and optional 'existing_docs'
+        
+        Returns:
+            Generated documentation content
+        """
+        import json
+        try:
+            data = json.loads(input_data)
+            codebase_path = data.get('codebase_path', 'src/')
+            existing_docs = data.get('existing_docs')
+            
+            # Analyze codebase
+            code_analysis = self.analyze_codebase(codebase_path)
+            
+            # Generate documentation
+            return self.generate_code_documentation(code_analysis, existing_docs)
+        except (json.JSONDecodeError, KeyError):
+            # Fallback: treat input_data as codebase path
+            code_analysis = self.analyze_codebase(input_data)
+            return self.generate_code_documentation(code_analysis, None)
+    
     def analyze_codebase(self, codebase_path: str) -> Dict:
         """
         Analyze codebase and extract code structure
