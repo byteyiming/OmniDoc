@@ -100,7 +100,7 @@ def get_settings() -> Settings:
             enable_performance_logging=True,
             docs_dir=os.getenv("DOCS_DIR", "docs"),
             default_llm_provider=os.getenv("LLM_PROVIDER", "gemini"),
-            rate_limit_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "60")),
+            rate_limit_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "50")),
             enable_profiling=False,  # Disable profiling in prod
             debug_mode=False,
             verbose_output=False
@@ -128,7 +128,7 @@ def get_settings() -> Settings:
             enable_performance_logging=True,
             docs_dir=os.getenv("DOCS_DIR", "docs"),
             default_llm_provider=os.getenv("LLM_PROVIDER", "gemini"),
-            rate_limit_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "60")),
+            rate_limit_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "50")),
             enable_profiling=True,  # Enable profiling in dev
             debug_mode=True,
             verbose_output=True

@@ -3,9 +3,15 @@ Google Gemini LLM Provider
 Implements BaseLLMProvider for Google Gemini API
 """
 import os
+import time
+import random
 from typing import Optional
 import google.generativeai as genai
+from google.api_core import exceptions as google_exceptions
 from src.llm.base_provider import BaseLLMProvider
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class GeminiProvider(BaseLLMProvider):
@@ -51,20 +57,27 @@ class GeminiProvider(BaseLLMProvider):
         model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        max_retries: int = 5,
+        initial_retry_delay: float = 2.0,
         **kwargs
     ) -> str:
         """
-        Generate text using Gemini API
+        Generate text using Gemini API with automatic retry for rate limits
         
         Args:
             prompt: Input prompt
             model: Model name (uses default if None)
             temperature: Sampling temperature (0.0-1.0)
             max_tokens: Max tokens (Gemini uses max_output_tokens)
+            max_retries: Maximum number of retries for rate limit errors (default: 5)
+            initial_retry_delay: Initial delay in seconds before retry (default: 2.0)
             **kwargs: Additional Gemini parameters
             
         Returns:
             Generated text
+            
+        Raises:
+            RuntimeError: If API call fails after all retries
         """
         # Use provided model or default
         model_name = model or self.default_model_name
@@ -85,14 +98,75 @@ class GeminiProvider(BaseLLMProvider):
         if max_tokens:
             generation_config["max_output_tokens"] = max_tokens
         
-        try:
-            response = gen_model.generate_content(
-                prompt,
-                generation_config=generation_config
+        # Retry logic with exponential backoff for rate limit errors
+        last_exception = None
+        retry_delay = initial_retry_delay
+        
+        for attempt in range(max_retries):
+            try:
+                response = gen_model.generate_content(
+                    prompt,
+                    generation_config=generation_config
+                )
+                # Success - reset retry delay for next call
+                if attempt > 0:
+                    logger.info(f"Gemini API call succeeded after {attempt} retries")
+                return response.text
+                
+            except google_exceptions.ResourceExhausted as e:
+                # 429 Rate limit error - retry with exponential backoff
+                last_exception = e
+                if attempt < max_retries - 1:
+                    # Exponential backoff with jitter to avoid thundering herd
+                    jitter = random.uniform(0, 0.3 * retry_delay)  # Add up to 30% jitter
+                    wait_time = retry_delay + jitter
+                    
+                    logger.warning(
+                        f"Gemini API rate limit exceeded (429). "
+                        f"Retrying in {wait_time:.2f}s (attempt {attempt + 1}/{max_retries})..."
+                    )
+                    time.sleep(wait_time)
+                    retry_delay *= 2.0  # Exponential backoff
+                else:
+                    logger.error(
+                        f"Gemini API rate limit exceeded after {max_retries} attempts. "
+                        f"Please wait and try again later."
+                    )
+                    
+            except Exception as e:
+                # For other errors, check if it's a rate limit error by string matching
+                error_str = str(e).lower()
+                if "429" in error_str or "resource exhausted" in error_str or "rate limit" in error_str:
+                    # Handle as rate limit error
+                    last_exception = e
+                    if attempt < max_retries - 1:
+                        jitter = random.uniform(0, 0.3 * retry_delay)
+                        wait_time = retry_delay + jitter
+                        
+                        logger.warning(
+                            f"Gemini API rate limit detected. "
+                            f"Retrying in {wait_time:.2f}s (attempt {attempt + 1}/{max_retries})..."
+                        )
+                        time.sleep(wait_time)
+                        retry_delay *= 2.0
+                    else:
+                        logger.error(
+                            f"Gemini API rate limit error after {max_retries} attempts: {str(e)}"
+                        )
+                else:
+                    # Non-retryable error - raise immediately
+                    logger.error(f"Gemini API error (non-retryable): {str(e)}")
+                    raise RuntimeError(f"Gemini API error: {str(e)}")
+        
+        # If we've exhausted all retries, raise the last exception
+        if last_exception:
+            raise RuntimeError(
+                f"Gemini API error after {max_retries} retries: {str(last_exception)}. "
+                f"This is likely a rate limit issue. Please wait and try again later."
             )
-            return response.text
-        except Exception as e:
-            raise RuntimeError(f"Gemini API error: {str(e)}")
+        
+        # Should not reach here, but just in case
+        raise RuntimeError("Gemini API call failed for unknown reason")
     
     def get_available_models(self) -> list:
         """Get list of available Gemini models"""
