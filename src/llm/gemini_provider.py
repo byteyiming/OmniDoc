@@ -11,7 +11,7 @@ from src.llm.base_provider import BaseLLMProvider
 class GeminiProvider(BaseLLMProvider):
     """Google Gemini API provider"""
     
-    def __init__(self, api_key: Optional[str] = None, default_model: str = "gemini-2.0-flash", **kwargs):
+    def __init__(self, api_key: Optional[str] = None, default_model: str = "gemini-2.0-flash-lite", **kwargs):
         """
         Initialize Gemini provider
         
@@ -41,8 +41,8 @@ class GeminiProvider(BaseLLMProvider):
         try:
             self._model = genai.GenerativeModel(default_model)
         except Exception:
-            # Fallback to gemini-2.5-flash if 2.0 not available
-            self.default_model_name = "gemini-2.5-flash"
+            # Fallback to gemini-2.0-flash-lite if model not available
+            self.default_model_name = "gemini-2.0-flash-lite"
             self._model = genai.GenerativeModel(self.default_model_name)
     
     def generate(
@@ -105,7 +105,9 @@ class GeminiProvider(BaseLLMProvider):
         except Exception:
             # Return common models as fallback
             return [
+                "gemini-2.0-flash-lite",
                 "gemini-2.0-flash",
+                "gemini-2.5-flash-lite",
                 "gemini-2.5-flash",
                 "gemini-2.5-pro",
                 "gemini-2.0-flash-exp"
