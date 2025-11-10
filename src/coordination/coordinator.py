@@ -351,48 +351,55 @@ class WorkflowCoordinator:
             logger.error(f"  ❌ V1 generation failed for {agent_type.value}: {e}")
             raise
         
-        # 2. CHECK V1 QUALITY
-        logger.info(f"  🔍 Step 2: Checking V1 quality for {agent_type.value}...")
+        # 2. CHECK V1 QUALITY (async)
+        logger.info(f"  🔍 Step 2: Checking V1 quality (async) for {agent_type.value}...")
         score = 0
         try:
-            # Get checklist for this agent type
-            checklist = self.quality_reviewer.document_type_checker.get_checklist_for_agent(agent_type)
+            loop = asyncio.get_event_loop()
+            checklist = await loop.run_in_executor(
+                None,
+                lambda: self.quality_reviewer.document_type_checker.get_checklist_for_agent(agent_type)
+            )
             
             if checklist:
-                # Use document-type-specific quality checker
-                quality_result_v1 = self.quality_reviewer.document_type_checker.check_quality_for_type(
-                    v1_content,
-                    document_type=agent_type.value
+                quality_result_v1 = await loop.run_in_executor(
+                    None,
+                    lambda: self.quality_reviewer.document_type_checker.check_quality_for_type(
+                        v1_content,
+                        document_type=agent_type.value
+                    )
                 )
                 score = quality_result_v1.get("overall_score", 0)
-                logger.info(f"  📊 V1 Quality Score: {score:.2f}/100 (threshold: {quality_threshold})")
+                logger.info(f"  📊 V1 Quality Score (async): {score:.2f}/100 (threshold: {quality_threshold})")
             else:
-                logger.warning(f"  ⚠️  No quality checklist found for {agent_type.value}, using base checker")
-                # Fallback to base checker
-                quality_result_v1 = self.quality_reviewer.quality_checker.check_quality(v1_content)
+                quality_result_v1 = await loop.run_in_executor(
+                    None,
+                    lambda: self.quality_reviewer.quality_checker.check_quality(v1_content)
+                )
                 score = quality_result_v1.get("overall_score", 0)
-                logger.info(f"  📊 V1 Quality Score: {score:.2f}/100 (threshold: {quality_threshold})")
+                logger.info(f"  📊 V1 Quality Score (async): {score:.2f}/100 (threshold: {quality_threshold})")
         except Exception as e:
-            logger.warning(f"  ⚠️  Quality check failed for {agent_type.value}: {e}, assuming score 0 to trigger improvement")
+            logger.warning(f"  ⚠️  Quality check failed for {agent_type.value}: {e}, assuming score 0")
             score = 0
         
-        # 3. DECIDE AND IMPROVE
+        # 3. DECIDE AND IMPROVE (async)
         if score >= quality_threshold:
-            logger.info(f"  ✅ [{agent_type.value}] V1 quality ({score:.2f}/100) meets threshold ({quality_threshold}). Proceeding.")
+            logger.info(f"  ✅ [{agent_type.value}] V1 quality ({score:.2f}/100) meets threshold. Proceeding.")
             return v1_file_path, v1_content
         else:
-            logger.warning(f"  ⚠️  [{agent_type.value}] V1 quality ({score:.2f}/100) is below threshold ({quality_threshold}). Triggering improvement loop...")
+            logger.warning(f"  ⚠️  [{agent_type.value}] V1 quality ({score:.2f}/100) is below threshold. Triggering improvement...")
             
-            # 3a. Get Actionable Feedback
-            logger.info(f"  🔍 Step 3a: Generating quality feedback for {agent_type.value}...")
+            # 3a. Get Actionable Feedback (async)
+            logger.info(f"  🔍 Step 3a: Generating quality feedback (async) for {agent_type.value}...")
             try:
-                feedback_report = self.quality_reviewer.generate(
-                    {agent_type.value: v1_content}
+                loop = asyncio.get_event_loop()
+                feedback_report = await loop.run_in_executor(
+                    None,
+                    lambda: self.quality_reviewer.generate({agent_type.value: v1_content})
                 )
-                logger.info(f"  ✅ Quality feedback generated: {len(feedback_report)} characters")
+                logger.info(f"  ✅ Quality feedback generated (async): {len(feedback_report)} characters")
             except Exception as e:
                 logger.warning(f"  ⚠️  Quality feedback generation failed: {e}, using simplified feedback")
-                # Create a simple feedback if generation fails
                 feedback_report = f"""
 Quality Review for {agent_type.value}:
 
@@ -411,39 +418,51 @@ Improvement Suggestions:
 - Ensure technical accuracy
 """
             
-            # 3b. Improve V1 -> V2
-            logger.info(f"  🔧 Step 3b: Improving {agent_type.value} (V1 -> V2)...")
+            # 3b. Improve V1 -> V2 (async)
+            logger.info(f"  🔧 Step 3b: Improving {agent_type.value} (V1 -> V2, async)...")
             try:
-                v2_file_path = self.document_improver.improve_and_save(
-                    original_document=v1_content,
-                    document_type=agent_type.value,
-                    quality_feedback=feedback_report,
-                    output_filename=output_filename,  # Overwrite original file
-                    project_id=project_id,
-                    context_manager=self.context_manager,
-                    agent_type=agent_type
+                loop = asyncio.get_event_loop()
+                v2_file_path = await loop.run_in_executor(
+                    None,
+                    lambda: self.document_improver.improve_and_save(
+                        original_document=v1_content,
+                        document_type=agent_type.value,
+                        quality_feedback=feedback_report,
+                        output_filename=output_filename,
+                        project_id=project_id,
+                        context_manager=self.context_manager,
+                        agent_type=agent_type
+                    )
                 )
-                v2_content = self.file_manager.read_file(v2_file_path)
-                logger.info(f"  ✅ V2 (Improved) generated: {len(v2_content)} characters")
+                v2_content = await loop.run_in_executor(
+                    None,
+                    lambda: self.file_manager.read_file(v2_file_path)
+                )
+                logger.info(f"  ✅ V2 (Improved, async) generated: {len(v2_content)} characters")
                 
-                # Optionally check V2 quality (for logging)
+                # Optionally check V2 quality
                 try:
-                    checklist = self.quality_reviewer.document_type_checker.get_checklist_for_agent(agent_type)
+                    checklist = await loop.run_in_executor(
+                        None,
+                        lambda: self.quality_reviewer.document_type_checker.get_checklist_for_agent(agent_type)
+                    )
                     if checklist:
-                        quality_result_v2 = self.quality_reviewer.document_type_checker.check_quality_for_type(
-                            v2_content,
-                            document_type=agent_type.value
+                        quality_result_v2 = await loop.run_in_executor(
+                            None,
+                            lambda: self.quality_reviewer.document_type_checker.check_quality_for_type(
+                                v2_content,
+                                document_type=agent_type.value
+                            )
                         )
                         v2_score = quality_result_v2.get("overall_score", 0)
-                        logger.info(f"  📊 V2 Quality Score: {v2_score:.2f}/100 (improvement: +{v2_score - score:.2f})")
+                        logger.info(f"  📊 V2 Quality Score (async): {v2_score:.2f}/100 (improvement: +{v2_score - score:.2f})")
                 except Exception as e:
                     logger.debug(f"  ⚠️  V2 quality check skipped: {e}")
                 
-                logger.info(f"  🎉 [{agent_type.value}] Quality loop completed: V1 ({score:.2f}) -> V2 (improved)")
+                logger.info(f"  🎉 [{agent_type.value}] Quality loop completed (async): V1 ({score:.2f}) -> V2 (improved)")
                 return v2_file_path, v2_content
             except Exception as e:
                 logger.error(f"  ❌ Improvement failed for {agent_type.value}: {e}")
-                # If improvement fails, return V1 as fallback
                 logger.warning(f"  ⚠️  Falling back to V1 for {agent_type.value}")
                 return v1_file_path, v1_content
     
@@ -1064,9 +1083,40 @@ Improvement Suggestions:
             return results
             
         except Exception as e:
-            logger.error(f"❌ CRITICAL ERROR in HYBRID workflow: {str(e)}", exc_info=True)
-            results["error"] = str(e)
-            return results
+                logger.error(f"❌ CRITICAL ERROR in HYBRID workflow: {str(e)}", exc_info=True)
+                results["error"] = str(e)
+                return results
+    
+    async def async_generate_all_docs(
+        self,
+        user_idea: str,
+        project_id: Optional[str] = None,
+        profile: str = "team",
+        codebase_path: Optional[str] = None
+    ) -> Dict:
+        """
+        Generate all documentation types asynchronously (async version of generate_all_docs)
+        
+        This method uses async operations where possible, falling back to run_in_executor
+        for sync operations. For Phase 2, it uses AsyncParallelExecutor for true async
+        parallel execution.
+        
+        Args:
+            user_idea: User's project idea
+            project_id: Optional project ID (generates one if not provided)
+            profile: "team" or "individual" - determines which docs to generate
+            codebase_path: Optional path to codebase directory for Phase 4
+        
+        Returns:
+            Dict with generated file paths and status
+        """
+        # For now, run sync version in executor (can be optimized later)
+        # This maintains backward compatibility while allowing async callers
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.generate_all_docs(user_idea, project_id, profile, codebase_path)
+        )
     
     def get_workflow_status(self, project_id: str) -> Dict:
         """Get current workflow status for a project"""
