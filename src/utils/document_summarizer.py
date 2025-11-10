@@ -33,8 +33,8 @@ class DocumentSummarizer:
             max_summary_length: Target maximum length for summaries in characters
         """
         settings = get_settings()
-        self.llm_provider = llm_provider or ProviderFactory.create_provider(
-            provider_name or settings.default_llm_provider
+        self.llm_provider = llm_provider or ProviderFactory.create(
+            provider_name=provider_name or settings.default_llm_provider
         )
         self.max_summary_length = max_summary_length
         logger.info(f"DocumentSummarizer initialized (max_length: {max_summary_length})")
