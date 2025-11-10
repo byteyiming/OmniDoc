@@ -283,6 +283,102 @@ class WorkflowCoordinator:
         except Exception as e:
             logger.error(f"  ❌ V1 generation failed for {agent_type.value}: {e}")
             raise
+        
+        # 2. CHECK V1 QUALITY
+        logger.info(f"  🔍 Step 2: Checking V1 quality for {agent_type.value}...")
+        score = 0
+        try:
+            # Get checklist for this agent type
+            checklist = self.quality_reviewer.document_type_checker.get_checklist_for_agent(agent_type)
+            
+            if checklist:
+                # Use document-type-specific quality checker
+                quality_result_v1 = self.quality_reviewer.document_type_checker.check_quality_for_type(
+                    v1_content,
+                    document_type=agent_type.value
+                )
+                score = quality_result_v1.get("overall_score", 0)
+                logger.info(f"  📊 V1 Quality Score: {score:.2f}/100 (threshold: {quality_threshold})")
+            else:
+                logger.warning(f"  ⚠️  No quality checklist found for {agent_type.value}, using base checker")
+                # Fallback to base checker
+                quality_result_v1 = self.quality_reviewer.quality_checker.check_quality(v1_content)
+                score = quality_result_v1.get("overall_score", 0)
+                logger.info(f"  📊 V1 Quality Score: {score:.2f}/100 (threshold: {quality_threshold})")
+        except Exception as e:
+            logger.warning(f"  ⚠️  Quality check failed for {agent_type.value}: {e}, assuming score 0 to trigger improvement")
+            score = 0
+        
+        # 3. DECIDE AND IMPROVE
+        if score >= quality_threshold:
+            logger.info(f"  ✅ [{agent_type.value}] V1 quality ({score:.2f}/100) meets threshold ({quality_threshold}). Proceeding.")
+            return v1_file_path, v1_content
+        else:
+            logger.warning(f"  ⚠️  [{agent_type.value}] V1 quality ({score:.2f}/100) is below threshold ({quality_threshold}). Triggering improvement loop...")
+            
+            # 3a. Get Actionable Feedback
+            logger.info(f"  🔍 Step 3a: Generating quality feedback for {agent_type.value}...")
+            try:
+                feedback_report = self.quality_reviewer.generate(
+                    {agent_type.value: v1_content}
+                )
+                logger.info(f"  ✅ Quality feedback generated: {len(feedback_report)} characters")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Quality feedback generation failed: {e}, using simplified feedback")
+                # Create a simple feedback if generation fails
+                feedback_report = f"""
+Quality Review for {agent_type.value}:
+
+Current Score: {score:.2f}/100
+Threshold: {quality_threshold}
+
+Issues Found:
+- Document quality is below the required threshold
+- Please improve completeness, clarity, and structure
+- Ensure all required sections are present and well-developed
+
+Improvement Suggestions:
+- Review and expand missing sections
+- Improve clarity and readability
+- Add more detailed explanations
+- Ensure technical accuracy
+"""
+            
+            # 3b. Improve V1 -> V2
+            logger.info(f"  🔧 Step 3b: Improving {agent_type.value} (V1 -> V2)...")
+            try:
+                v2_file_path = self.document_improver.improve_and_save(
+                    original_document=v1_content,
+                    document_type=agent_type.value,
+                    quality_feedback=feedback_report,
+                    output_filename=output_filename,  # Overwrite original file
+                    project_id=project_id,
+                    context_manager=self.context_manager,
+                    agent_type=agent_type
+                )
+                v2_content = self.file_manager.read_file(v2_file_path)
+                logger.info(f"  ✅ V2 (Improved) generated: {len(v2_content)} characters")
+                
+                # Optionally check V2 quality (for logging)
+                try:
+                    checklist = self.quality_reviewer.document_type_checker.get_checklist_for_agent(agent_type)
+                    if checklist:
+                        quality_result_v2 = self.quality_reviewer.document_type_checker.check_quality_for_type(
+                            v2_content,
+                            document_type=agent_type.value
+                        )
+                        v2_score = quality_result_v2.get("overall_score", 0)
+                        logger.info(f"  📊 V2 Quality Score: {v2_score:.2f}/100 (improvement: +{v2_score - score:.2f})")
+                except Exception as e:
+                    logger.debug(f"  ⚠️  V2 quality check skipped: {e}")
+                
+                logger.info(f"  🎉 [{agent_type.value}] Quality loop completed: V1 ({score:.2f}) -> V2 (improved)")
+                return v2_file_path, v2_content
+            except Exception as e:
+                logger.error(f"  ❌ Improvement failed for {agent_type.value}: {e}")
+                # If improvement fails, return V1 as fallback
+                logger.warning(f"  ⚠️  Falling back to V1 for {agent_type.value}")
+                return v1_file_path, v1_content
     
     async def _async_run_agent_with_quality_loop(
         self,
