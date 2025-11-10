@@ -67,6 +67,7 @@ Thumbs.db
 !TEMPERATURE_CONFIG.md
 !SUMMARY_LENGTH_CONFIG.md
 !PDF_DOWNLOAD_SECURITY.md
+!OLLAMA_TIMEOUT_FIX.md
 
 
 # Documentation files (organized in docs/)

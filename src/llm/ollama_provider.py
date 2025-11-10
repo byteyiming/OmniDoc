@@ -5,7 +5,7 @@ Implements BaseLLMProvider for local Ollama API
 import os
 from typing import Optional
 import requests
-from requests.exceptions import ConnectionError, RequestException
+from requests.exceptions import ConnectionError, RequestException, Timeout
 from src.llm.base_provider import BaseLLMProvider
 from src.utils.logger import get_logger
 
@@ -46,6 +46,11 @@ class OllamaProvider(BaseLLMProvider):
         
         self.default_model_name = default_model
         self.base_url = base_url.rstrip('/')  # Remove trailing slash
+        
+        # Get timeout from environment or use default
+        # Default: 600 seconds (10 minutes) for long document generation
+        # For very long documents, increase this value
+        self.request_timeout = int(os.getenv("OLLAMA_TIMEOUT", "600"))
         
         # Test connection to Ollama server
         try:
@@ -139,6 +144,17 @@ class OllamaProvider(BaseLLMProvider):
         # Add max_tokens (Ollama uses num_predict)
         payload["options"]["num_predict"] = max_tokens
         
+        # Calculate dynamic timeout based on max_tokens
+        # Estimate: ~0.1-0.2 seconds per token for generation (conservative)
+        # Add buffer for network and processing overhead
+        # Minimum: use configured timeout, Maximum: scale with token count
+        estimated_time = max(
+            self.request_timeout,  # Minimum: configured timeout
+            int(max_tokens * 0.2) + 60  # Estimate: 0.2s per token + 60s buffer
+        )
+        # Cap at reasonable maximum (30 minutes) to prevent excessive waits
+        request_timeout = min(estimated_time, 1800)  # Max 30 minutes
+        
         # Add any additional options from kwargs
         if "top_p" in kwargs:
             payload["options"]["top_p"] = kwargs.pop("top_p")
@@ -150,10 +166,15 @@ class OllamaProvider(BaseLLMProvider):
             payload["options"].update(kwargs)
         
         try:
+            logger.debug(
+                f"Calling Ollama API (model: {model_name}, max_tokens: {max_tokens}, "
+                f"timeout: {request_timeout}s, prompt length: {len(prompt)} chars)"
+            )
+            
             response = requests.post(
                 f"{self.base_url}/api/chat",
                 json=payload,
-                timeout=300  # 5 minute timeout for long generations
+                timeout=request_timeout  # Dynamic timeout based on max_tokens
             )
             response.raise_for_status()
             
@@ -161,13 +182,26 @@ class OllamaProvider(BaseLLMProvider):
             
             # Extract message content from response
             if "message" in result and "content" in result["message"]:
-                return result["message"]["content"]
+                content = result["message"]["content"]
+                logger.debug(f"Ollama API response received ({len(content)} characters)")
+                return content
             elif "response" in result:
                 # Fallback for /api/generate endpoint format
-                return result["response"]
+                content = result["response"]
+                logger.debug(f"Ollama API response received ({len(content)} characters)")
+                return content
             else:
                 raise RuntimeError(f"Unexpected Ollama API response format: {result}")
                 
+        except requests.exceptions.Timeout as e:
+            error_msg = (
+                f"Ollama API request timed out after {request_timeout} seconds. "
+                f"This may happen with large models (like {model_name}) or long prompts. "
+                f"Consider: 1) Increasing OLLAMA_TIMEOUT in .env, 2) Using a faster model, "
+                f"3) Reducing max_tokens, or 4) Using Gemini for complex documents."
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
         except ConnectionError as e:
             raise ConnectionError(
                 f"Cannot connect to Ollama server at {self.base_url}. "
