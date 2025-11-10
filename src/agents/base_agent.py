@@ -8,6 +8,7 @@ import os
 from dotenv import load_dotenv
 
 from src.rate_limit.queue_manager import RequestQueue
+from src.rate_limit.async_queue_manager import AsyncRequestQueue
 from src.utils.template_engine import get_template_engine
 from src.llm.base_provider import BaseLLMProvider
 from src.llm.provider_factory import ProviderFactory
@@ -15,6 +16,7 @@ from src.utils.logger import get_logger
 from src.config.settings import get_settings
 from src.utils.error_handler import retry_with_backoff
 import requests
+import asyncio
 
 logger = get_logger(__name__)
 
@@ -89,6 +91,9 @@ class BaseAgent(ABC):
             period=60
         )
         
+        # Initialize async rate limiter (lazy initialization)
+        self._async_rate_limiter: Optional[AsyncRequestQueue] = None
+        
         # Agent metadata
         self.agent_name = self.__class__.__name__
         self.model_name = self.llm_provider.get_default_model()
@@ -107,6 +112,16 @@ class BaseAgent(ABC):
             self.default_temperature = settings.default_temperature
         
         logger.info(f"{self.agent_name} initialized with provider: {self.provider_name}, model: {self.model_name}, temperature: {self.default_temperature}")
+    
+    def _get_async_rate_limiter(self) -> AsyncRequestQueue:
+        """Get or create async rate limiter"""
+        if self._async_rate_limiter is None:
+            settings = get_settings()
+            self._async_rate_limiter = AsyncRequestQueue(
+                max_rate=settings.rate_limit_per_minute,
+                period=60
+            )
+        return self._async_rate_limiter
     
     @retry_with_backoff(
         max_retries=3,
@@ -185,6 +200,82 @@ class BaseAgent(ABC):
             raise
         # All other exceptions (ConnectionError, TimeoutError, RuntimeError, requests exceptions)
         # will be caught by the @retry_with_backoff decorator and retried with exponential backoff
+    
+    @retry_with_backoff(
+        max_retries=3,
+        initial_delay=2.0,
+        backoff_factor=2.0,
+        exceptions=(
+            ConnectionError,
+            TimeoutError,
+            requests.exceptions.RequestException,
+            RuntimeError,
+        )
+    )
+    async def _async_call_llm(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        **kwargs
+    ) -> str:
+        """
+        Call LLM with rate limiting and retry logic (async version)
+        
+        This method includes automatic retry with exponential backoff for transient errors:
+        - Network errors (ConnectionError, TimeoutError)
+        - HTTP errors (requests exceptions)
+        - Transient runtime errors
+        
+        Non-retryable errors (e.g., ValueError, authentication errors) are immediately raised.
+        
+        Args:
+            prompt: Input prompt
+            model: Model name override (uses provider default if None)
+            temperature: Sampling temperature (uses agent default from settings if None)
+            max_tokens: Maximum tokens to generate
+            **kwargs: Provider-specific parameters
+            
+        Returns:
+            Model response text
+            
+        Raises:
+            ConnectionError: If connection fails after all retries
+            TimeoutError: If request times out after all retries
+            ValueError: If input is invalid (not retried)
+            RuntimeError: If API call fails after all retries
+        """
+        # Use agent's default temperature if not explicitly provided
+        if temperature is None:
+            temperature = self.default_temperature
+        
+        model_to_use = model or self.model_name
+        logger.debug(f"{self.agent_name} calling LLM (async) (model: {model_to_use}, prompt length: {len(prompt)}, temperature: {temperature})")
+        
+        # Define async make_request function
+        async def make_request(prompt_str: str):
+            return await self.llm_provider.async_generate(
+                prompt=prompt_str,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs
+            )
+        
+        try:
+            # Use async rate limiter
+            async_rate_limiter = self._get_async_rate_limiter()
+            response = await async_rate_limiter.execute(make_request, prompt)
+            logger.info(f"{self.agent_name} LLM call completed (async) (response length: {len(response)} characters)")
+            # Clean and validate response
+            cleaned_response = self._clean_llm_response(response)
+            return cleaned_response
+        except (ValueError, KeyError, AttributeError) as e:
+            # Don't retry validation errors
+            logger.error(f"{self.agent_name} LLM call failed with validation error (not retried): {str(e)}", exc_info=True)
+            raise
+        # All other exceptions will be caught by the @retry_with_backoff decorator
     
     def _clean_llm_response(self, response: str) -> str:
         """

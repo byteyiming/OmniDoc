@@ -1,11 +1,14 @@
 """
 Error Handler Utilities
 Provides better error handling, retry logic, and graceful degradation
+Supports both sync and async functions
 """
-from typing import Callable, Any, Optional, TypeVar, List
+from typing import Callable, Any, Optional, TypeVar, List, Coroutine
 import time
+import asyncio
 from functools import wraps
 import logging
+import inspect
 
 T = TypeVar('T')
 
@@ -20,6 +23,7 @@ def retry_with_backoff(
 ):
     """
     Decorator for retrying function calls with exponential backoff
+    Supports both sync and async functions
     
     Args:
         max_retries: Maximum number of retry attempts
@@ -32,35 +36,73 @@ def retry_with_backoff(
         def api_call():
             # Your code here
             pass
+        
+        @retry_with_backoff(max_retries=3)
+        async def async_api_call():
+            # Your async code here
+            pass
     """
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        @wraps(func)
-        def wrapper(*args, **kwargs) -> T:
-            last_exception = None
-            delay = initial_delay
+        # Check if function is async
+        if inspect.iscoroutinefunction(func):
+            # Async version
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs) -> T:
+                last_exception = None
+                delay = initial_delay
+                
+                for attempt in range(max_retries):
+                    try:
+                        return await func(*args, **kwargs)
+                    except exceptions as e:
+                        last_exception = e
+                        if attempt < max_retries - 1:
+                            logger.warning(
+                                f"{func.__name__} failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                                f"Retrying in {delay:.1f}s..."
+                            )
+                            await asyncio.sleep(delay)
+                            delay *= backoff_factor
+                        else:
+                            logger.error(
+                                f"{func.__name__} failed after {max_retries} attempts: {e}"
+                            )
+                
+                if last_exception:
+                    raise last_exception
+                raise Exception(f"{func.__name__} failed after {max_retries} attempts")
             
-            for attempt in range(max_retries):
-                try:
-                    return func(*args, **kwargs)
-                except exceptions as e:
-                    last_exception = e
-                    if attempt < max_retries - 1:
-                        logger.warning(
-                            f"{func.__name__} failed (attempt {attempt + 1}/{max_retries}): {e}. "
-                            f"Retrying in {delay:.1f}s..."
-                        )
-                        time.sleep(delay)
-                        delay *= backoff_factor
-                    else:
-                        logger.error(
-                            f"{func.__name__} failed after {max_retries} attempts: {e}"
-                        )
+            return async_wrapper
+        else:
+            # Sync version
+            @wraps(func)
+            def sync_wrapper(*args, **kwargs) -> T:
+                last_exception = None
+                delay = initial_delay
+                
+                for attempt in range(max_retries):
+                    try:
+                        return func(*args, **kwargs)
+                    except exceptions as e:
+                        last_exception = e
+                        if attempt < max_retries - 1:
+                            logger.warning(
+                                f"{func.__name__} failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                                f"Retrying in {delay:.1f}s..."
+                            )
+                            time.sleep(delay)
+                            delay *= backoff_factor
+                        else:
+                            logger.error(
+                                f"{func.__name__} failed after {max_retries} attempts: {e}"
+                            )
+                
+                if last_exception:
+                    raise last_exception
+                raise Exception(f"{func.__name__} failed after {max_retries} attempts")
             
-            if last_exception:
-                raise last_exception
-            raise Exception(f"{func.__name__} failed after {max_retries} attempts")
-        
-        return wrapper
+            return sync_wrapper
+    
     return decorator
 
 
