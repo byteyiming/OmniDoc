@@ -178,52 +178,133 @@ class OllamaProvider(BaseLLMProvider):
         if kwargs:
             payload["options"].update(kwargs)
         
-        try:
-            logger.debug(
-                f"Calling Ollama API (model: {model_name}, max_tokens: {max_tokens}, "
-                f"timeout: {request_timeout}s, prompt length: {len(prompt)} chars)"
-            )
-            
-            response = requests.post(
-                f"{self.base_url}/api/chat",
-                json=payload,
-                timeout=request_timeout  # Dynamic timeout based on max_tokens
-            )
-            response.raise_for_status()
-            
-            result = response.json()
-            
-            # Extract message content from response
-            if "message" in result and "content" in result["message"]:
-                content = result["message"]["content"]
-                logger.debug(f"Ollama API response received ({len(content)} characters)")
-                return content
-            elif "response" in result:
-                # Fallback for /api/generate endpoint format
-                content = result["response"]
-                logger.debug(f"Ollama API response received ({len(content)} characters)")
-                return content
-            else:
-                raise RuntimeError(f"Unexpected Ollama API response format: {result}")
+        # Retry configuration for transient errors (500, 503, etc.)
+        max_retries = 2  # Retry up to 2 times for server errors
+        retry_delay = 2.0  # Wait 2 seconds between retries
+        
+        for attempt in range(max_retries + 1):
+            try:
+                logger.debug(
+                    f"Calling Ollama API (model: {model_name}, max_tokens: {max_tokens}, "
+                    f"timeout: {request_timeout}s, prompt length: {len(prompt)} chars, "
+                    f"attempt: {attempt + 1}/{max_retries + 1})"
+                )
                 
-        except requests.exceptions.Timeout as e:
-            error_msg = (
-                f"Ollama API request timed out after {request_timeout} seconds. "
-                f"This may happen with large models (like {model_name}) or long prompts. "
-                f"Consider: 1) Increasing OLLAMA_TIMEOUT in .env, 2) Using a faster model, "
-                f"3) Reducing max_tokens, or 4) Using Gemini for complex documents."
-            )
-            logger.error(error_msg)
-            raise RuntimeError(error_msg) from e
-        except ConnectionError as e:
-            raise ConnectionError(
-                f"Cannot connect to Ollama server at {self.base_url}. "
-                "Please ensure Ollama is running."
-            ) from e
-        except RequestException as e:
-            raise RuntimeError(f"Ollama API error: {str(e)}") from e
-        except Exception as e:
-            raise RuntimeError(f"Unexpected error calling Ollama API: {str(e)}") from e
+                response = requests.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload,
+                    timeout=request_timeout  # Dynamic timeout based on max_tokens
+                )
+                
+                # Check for HTTP errors
+                if response.status_code >= 400:
+                    # Try to extract error details from response
+                    error_details = None
+                    try:
+                        error_response = response.json()
+                        if "error" in error_response:
+                            error_details = error_response["error"]
+                        elif "message" in error_response:
+                            error_details = error_response["message"]
+                    except:
+                        error_details = response.text[:200] if response.text else None
+                    
+                    # Handle 500/503 errors with retry
+                    if response.status_code in [500, 503] and attempt < max_retries:
+                        error_msg = (
+                            f"Ollama API server error ({response.status_code}): {error_details or 'Internal server error'}. "
+                            f"Retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries + 1})..."
+                        )
+                        logger.warning(error_msg)
+                        time.sleep(retry_delay)
+                        retry_delay *= 1.5  # Exponential backoff
+                        continue
+                    
+                    # For other errors or after retries exhausted, raise immediately
+                    error_msg = (
+                        f"Ollama API error ({response.status_code}): {error_details or response.reason}. "
+                        f"Model: {model_name}, URL: {self.base_url}/api/chat"
+                    )
+                    
+                    # Provide specific suggestions based on error code
+                    if response.status_code == 404:
+                        error_msg += (
+                            f"\nModel '{model_name}' not found. "
+                            f"Available models: {', '.join(self.get_available_models())}. "
+                            f"Try: ollama pull {model_name}"
+                        )
+                    elif response.status_code == 500:
+                        error_msg += (
+                            f"\nOllama server internal error. Possible causes: "
+                            f"1) Model '{model_name}' failed to load (check memory), "
+                            f"2) Server out of memory, 3) Model file corruption. "
+                            f"Try: ollama run {model_name} (to test model), or use a smaller model like 'dolphin3'"
+                        )
+                    elif response.status_code == 503:
+                        error_msg += (
+                            f"\nOllama server temporarily unavailable. "
+                            f"Wait a few seconds and try again, or check if Ollama is running: ollama list"
+                        )
+                    
+                    logger.error(error_msg)
+                    response.raise_for_status()  # This will raise HTTPError with full details
+                
+                # Success - parse response
+                result = response.json()
+                
+                # Extract message content from response
+                if "message" in result and "content" in result["message"]:
+                    content = result["message"]["content"]
+                    logger.debug(f"Ollama API response received ({len(content)} characters)")
+                    return content
+                elif "response" in result:
+                    # Fallback for /api/generate endpoint format
+                    content = result["response"]
+                    logger.debug(f"Ollama API response received ({len(content)} characters)")
+                    return content
+                else:
+                    raise RuntimeError(f"Unexpected Ollama API response format: {result}")
+                    
+            except requests.exceptions.Timeout as e:
+                error_msg = (
+                    f"Ollama API request timed out after {request_timeout} seconds. "
+                    f"This may happen with large models (like {model_name}) or long prompts. "
+                    f"Consider: 1) Increasing OLLAMA_TIMEOUT in .env, 2) Using a faster model, "
+                    f"3) Reducing max_tokens, or 4) Using Gemini for complex documents."
+                )
+                logger.error(error_msg)
+                raise RuntimeError(error_msg) from e
+            except requests.exceptions.HTTPError as e:
+                # This is raised by response.raise_for_status() for 4xx/5xx errors
+                # We've already handled retries above, so if we get here, retries are exhausted
+                error_msg = (
+                    f"Ollama API HTTP error after {max_retries + 1} attempts: {str(e)}. "
+                    f"Model: {model_name}. Check Ollama server logs for details."
+                )
+                logger.error(error_msg)
+                raise RuntimeError(error_msg) from e
+            except ConnectionError as e:
+                raise ConnectionError(
+                    f"Cannot connect to Ollama server at {self.base_url}. "
+                    "Please ensure Ollama is running: ollama serve"
+                ) from e
+            except requests.exceptions.RequestException as e:
+                # For other request errors, retry once
+                if attempt < max_retries:
+                    logger.warning(
+                        f"Ollama API request error: {str(e)}. "
+                        f"Retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries + 1})..."
+                    )
+                    time.sleep(retry_delay)
+                    retry_delay *= 1.5
+                    continue
+                raise RuntimeError(f"Ollama API error: {str(e)}") from e
+            except Exception as e:
+                # For unexpected errors, don't retry
+                raise RuntimeError(f"Unexpected error calling Ollama API: {str(e)}") from e
+        
+        # Should not reach here, but just in case
+        raise RuntimeError(f"Ollama API call failed after {max_retries + 1} attempts")
     
     def get_available_models(self) -> list:
         """
