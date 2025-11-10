@@ -55,7 +55,9 @@ class WorkflowCoordinator:
     def __init__(
         self,
         context_manager: Optional[ContextManager] = None,
-        rate_limiter: Optional[RequestQueue] = None
+        rate_limiter: Optional[RequestQueue] = None,
+        provider_name: Optional[str] = None,
+        provider_config: Optional[Dict[str, str]] = None
     ):
         """
         Initialize workflow coordinator
@@ -63,6 +65,11 @@ class WorkflowCoordinator:
         Args:
             context_manager: Context manager instance
             rate_limiter: Shared rate limiter for all agents
+            provider_name: Default provider name for all agents (uses env var if None)
+                          Options: "ollama", "gemini", "openai"
+            provider_config: Dict mapping agent attribute names to provider names
+                           (overrides default provider_name for specific agents)
+                           Example: {"requirements_analyst": "gemini", "technical_agent": "ollama"}
         """
         settings = get_settings()
         self.context_manager = context_manager or ContextManager()
@@ -74,38 +81,148 @@ class WorkflowCoordinator:
         self.file_manager = FileManager(base_dir=settings.docs_dir)
         logger.info(f"WorkflowCoordinator initialized (environment: {settings.environment.value})")
         
-        # Initialize agents (shared rate limiter)
-        self.requirements_analyst = RequirementsAnalyst(rate_limiter=self.rate_limiter)
-        self.pm_agent = PMDocumentationAgent(rate_limiter=self.rate_limiter)
-        self.technical_agent = TechnicalDocumentationAgent(rate_limiter=self.rate_limiter)
-        self.api_agent = APIDocumentationAgent(rate_limiter=self.rate_limiter)
-        self.developer_agent = DeveloperDocumentationAgent(rate_limiter=self.rate_limiter)
-        self.stakeholder_agent = StakeholderCommunicationAgent(rate_limiter=self.rate_limiter)
-        self.user_agent = UserDocumentationAgent(rate_limiter=self.rate_limiter)
-        self.test_agent = TestDocumentationAgent(rate_limiter=self.rate_limiter)
-        self.quality_reviewer = QualityReviewerAgent(rate_limiter=self.rate_limiter)
-        self.format_converter = FormatConverterAgent(rate_limiter=self.rate_limiter)
-        self.claude_cli_agent = ClaudeCLIDocumentationAgent(rate_limiter=self.rate_limiter)
+        # Determine default provider (from parameter or env var)
+        default_provider = provider_name or os.getenv("LLM_PROVIDER")
+        provider_config = provider_config or {}
+        
+        # Hybrid Mode: Key agents use Gemini for better quality, others use default (Ollama)
+        # This ensures critical/complex documents get high quality while saving costs
+        # Only apply hybrid mode if:
+        # 1. No explicit provider_config is provided (user wants auto-config)
+        # 2. Default provider is Ollama (or None, which defaults to Ollama via env)
+        # 3. Gemini API key is available (can actually use Gemini)
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        should_enable_hybrid = (
+            not provider_config and  # No explicit config
+            (default_provider is None or default_provider.lower() == "ollama") and  # Using Ollama
+            gemini_api_key and gemini_api_key != ""  # Gemini API key available
+        )
+        
+        if should_enable_hybrid:
+            # Key agents that require high quality (complex prompts, technical accuracy)
+            # These agents handle the most complex documentation tasks
+            hybrid_config = {
+                "technical_agent": "gemini",           # Technical specs are complex
+                "api_agent": "gemini",                 # API docs need precision
+                "database_schema_agent": "gemini",     # Database design is critical
+                "requirements_analyst": "gemini",      # Requirements are foundational
+            }
+            # Merge with user-provided config (user config takes precedence)
+            provider_config = {**hybrid_config, **provider_config}
+            logger.info("🔀 Hybrid mode enabled: Key agents (technical, API, database, requirements) use Gemini, others use Ollama")
+            logger.info("   This balances quality (Gemini for complex docs) with cost (Ollama for others)")
+        
+        # Helper function to get provider for an agent
+        def get_agent_provider(agent_key: str) -> Optional[str]:
+            """Get provider for a specific agent"""
+            return provider_config.get(agent_key, default_provider)
+        
+        # Initialize agents (shared rate limiter, with optional provider override)
+        self.requirements_analyst = RequirementsAnalyst(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("requirements_analyst")
+        )
+        self.pm_agent = PMDocumentationAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("pm_agent")
+        )
+        self.technical_agent = TechnicalDocumentationAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("technical_agent")
+        )
+        self.api_agent = APIDocumentationAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("api_agent")
+        )
+        self.developer_agent = DeveloperDocumentationAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("developer_agent")
+        )
+        self.stakeholder_agent = StakeholderCommunicationAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("stakeholder_agent")
+        )
+        self.user_agent = UserDocumentationAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("user_agent")
+        )
+        self.test_agent = TestDocumentationAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("test_agent")
+        )
+        self.quality_reviewer = QualityReviewerAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("quality_reviewer")
+        )
+        self.format_converter = FormatConverterAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("format_converter")
+        )
+        self.claude_cli_agent = ClaudeCLIDocumentationAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("claude_cli_agent")
+        )
         self.cross_referencer = CrossReferencer()
         
         # Level 1: Strategic (Entrepreneur) - New agents
-        self.project_charter_agent = ProjectCharterAgent(rate_limiter=self.rate_limiter)
+        self.project_charter_agent = ProjectCharterAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("project_charter_agent")
+        )
         
         # Level 2: Product (Product Manager) - New agents
-        self.user_stories_agent = UserStoriesAgent(rate_limiter=self.rate_limiter)
+        self.user_stories_agent = UserStoriesAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("user_stories_agent")
+        )
         
         # Level 3: Technical (Programmer) - New agents
-        self.database_schema_agent = DatabaseSchemaAgent(rate_limiter=self.rate_limiter)
-        self.setup_guide_agent = SetupGuideAgent(rate_limiter=self.rate_limiter)
+        self.database_schema_agent = DatabaseSchemaAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("database_schema_agent")
+        )
+        self.setup_guide_agent = SetupGuideAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("setup_guide_agent")
+        )
         
         # Business & Marketing agents
-        self.marketing_plan_agent = MarketingPlanAgent(rate_limiter=self.rate_limiter)
-        self.business_model_agent = BusinessModelAgent(rate_limiter=self.rate_limiter)
-        self.support_playbook_agent = SupportPlaybookAgent(rate_limiter=self.rate_limiter)
-        self.legal_compliance_agent = LegalComplianceAgent(rate_limiter=self.rate_limiter)
+        self.marketing_plan_agent = MarketingPlanAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("marketing_plan_agent")
+        )
+        self.business_model_agent = BusinessModelAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("business_model_agent")
+        )
+        self.support_playbook_agent = SupportPlaybookAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("support_playbook_agent")
+        )
+        self.legal_compliance_agent = LegalComplianceAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("legal_compliance_agent")
+        )
         
         # Document improvement agent (for auto-fix loop)
-        self.document_improver = DocumentImproverAgent(rate_limiter=self.rate_limiter)
+        self.document_improver = DocumentImproverAgent(
+            rate_limiter=self.rate_limiter,
+            provider_name=get_agent_provider("document_improver")
+        )
+        
+        # Log provider configuration
+        if default_provider:
+            logger.info(f"WorkflowCoordinator using default provider: {default_provider}")
+        if provider_config:
+            # Log which agents use which provider
+            gemini_agents = [k for k, v in provider_config.items() if v and v.lower() == "gemini"]
+            ollama_agents = [k for k, v in provider_config.items() if v and v.lower() == "ollama"]
+            if gemini_agents:
+                logger.info(f"Agents using Gemini: {', '.join(gemini_agents)}")
+            if ollama_agents:
+                logger.info(f"Agents using Ollama: {', '.join(ollama_agents)}")
+            if len(provider_config) > len(gemini_agents) + len(ollama_agents):
+                logger.info(f"WorkflowCoordinator using custom provider config: {provider_config}")
         
         logger.info("WorkflowCoordinator initialized with all agents (including business/marketing agents and auto-fix)")
     

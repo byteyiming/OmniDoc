@@ -302,6 +302,39 @@ agent = RequirementsAnalyst(provider_name="openai")
 
 **See [SWITCH_LLM_PROVIDER.md](SWITCH_LLM_PROVIDER.md) for detailed switching guide.**
 
+#### Hybrid Mode (Mixed Providers) - Recommended for Production
+
+The system supports **Hybrid Mode** which automatically uses Gemini for critical/complex agents and Ollama for others. This balances quality with cost.
+
+**Automatic Hybrid Mode:**
+- When `LLM_PROVIDER=ollama` and `GEMINI_API_KEY` is set
+- Key agents (technical, API, database, requirements) use Gemini
+- Other agents use Ollama (free)
+- **Cost savings: ~80% while maintaining quality for critical docs**
+
+**Example:**
+```python
+# Hybrid mode is automatic when using Ollama with Gemini API key
+coordinator = WorkflowCoordinator(
+    provider_name="ollama",  # Default: Ollama
+    # Key agents automatically use Gemini if GEMINI_API_KEY is set
+)
+
+# Or explicitly configure:
+coordinator = WorkflowCoordinator(
+    provider_name="ollama",
+    provider_config={
+        "technical_agent": "gemini",      # Complex docs use Gemini
+        "api_agent": "gemini",            # API docs use Gemini
+        "database_schema_agent": "gemini", # Database design uses Gemini
+        "requirements_analyst": "gemini",  # Requirements use Gemini
+        # Others use Ollama (default)
+    }
+)
+```
+
+**See [HYBRID_MODE_GUIDE.md](HYBRID_MODE_GUIDE.md) for detailed hybrid mode guide.**
+
 ### Multiple Provider Example
 
 See [examples/multi_provider_example.py](examples/multi_provider_example.py) for examples of using different providers.
@@ -413,6 +446,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - [Environment Setup Guide](ENV_SETUP.md)
 - [Switch LLM Provider Guide](SWITCH_LLM_PROVIDER.md) - How to switch between Gemini and Ollama
+- [Hybrid Mode Guide](HYBRID_MODE_GUIDE.md) - **Recommended**: Mix Gemini (quality) and Ollama (cost)
 - [Ollama Token Fix Documentation](OLLAMA_TOKEN_FIX.md)
 - [Quality Scores Analysis](QUALITY_SCORES_ANALYSIS.md)
 - [Configuration Guide](src/config/README.md)
