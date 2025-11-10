@@ -22,7 +22,7 @@ class DocumentSummarizer:
         self,
         llm_provider: Optional[BaseLLMProvider] = None,
         provider_name: Optional[str] = None,
-        max_summary_length: int = 2000
+        max_summary_length: Optional[int] = None
     ):
         """
         Initialize document summarizer
@@ -31,11 +31,16 @@ class DocumentSummarizer:
             llm_provider: Pre-configured LLM provider (if None, creates from provider_name)
             provider_name: Name of provider ("gemini", "openai", etc.)
             max_summary_length: Target maximum length for summaries in characters
+                              (defaults to MAX_SUMMARY_LENGTH env var or 3000)
         """
+        import os
         settings = get_settings()
         self.llm_provider = llm_provider or ProviderFactory.create(
             provider_name=provider_name or settings.default_llm_provider
         )
+        # Get max_summary_length from parameter, env var, or default
+        if max_summary_length is None:
+            max_summary_length = int(os.getenv("MAX_SUMMARY_LENGTH", "3000"))
         self.max_summary_length = max_summary_length
         logger.info(f"DocumentSummarizer initialized (max_length: {max_summary_length})")
     

@@ -75,6 +75,11 @@ class Settings:
     # LLM Configuration
     default_llm_provider: str
     rate_limit_per_minute: int
+    # LLM Temperature Configuration
+    default_temperature: float  # Default temperature for all providers
+    ollama_temperature: float   # Temperature for Ollama (lower for better instruction following)
+    gemini_temperature: float   # Temperature for Gemini
+    openai_temperature: float   # Temperature for OpenAI
     # Performance
     enable_profiling: bool
     # Debug features
@@ -91,6 +96,12 @@ def get_settings() -> Settings:
     """
     env = get_environment()
     
+    # Temperature configuration (lower for local models, higher for cloud models)
+    default_temperature = float(os.getenv("TEMPERATURE", "0.3"))  # Default: 0.3 for better instruction following
+    ollama_temperature = float(os.getenv("OLLAMA_TEMPERATURE", os.getenv("TEMPERATURE", "0.3")))  # Lower for local models
+    gemini_temperature = float(os.getenv("GEMINI_TEMPERATURE", os.getenv("TEMPERATURE", "0.7")))  # Higher for cloud models
+    openai_temperature = float(os.getenv("OPENAI_TEMPERATURE", os.getenv("TEMPERATURE", "0.7")))  # Higher for cloud models
+    
     if env == Environment.PROD:
         return Settings(
             environment=env,
@@ -101,6 +112,10 @@ def get_settings() -> Settings:
             docs_dir=os.getenv("DOCS_DIR", "docs"),
             default_llm_provider=os.getenv("LLM_PROVIDER", "gemini"),
             rate_limit_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "50")),
+            default_temperature=default_temperature,
+            ollama_temperature=ollama_temperature,
+            gemini_temperature=gemini_temperature,
+            openai_temperature=openai_temperature,
             enable_profiling=False,  # Disable profiling in prod
             debug_mode=False,
             verbose_output=False
@@ -115,6 +130,10 @@ def get_settings() -> Settings:
             docs_dir=os.getenv("DOCS_DIR", "docs/test"),
             default_llm_provider=os.getenv("LLM_PROVIDER", "gemini"),
             rate_limit_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "100")),
+            default_temperature=default_temperature,
+            ollama_temperature=ollama_temperature,
+            gemini_temperature=gemini_temperature,
+            openai_temperature=openai_temperature,
             enable_profiling=False,
             debug_mode=True,
             verbose_output=False
@@ -129,6 +148,10 @@ def get_settings() -> Settings:
             docs_dir=os.getenv("DOCS_DIR", "docs"),
             default_llm_provider=os.getenv("LLM_PROVIDER", "gemini"),
             rate_limit_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "50")),
+            default_temperature=default_temperature,
+            ollama_temperature=ollama_temperature,
+            gemini_temperature=gemini_temperature,
+            openai_temperature=openai_temperature,
             enable_profiling=True,  # Enable profiling in dev
             debug_mode=True,
             verbose_output=True

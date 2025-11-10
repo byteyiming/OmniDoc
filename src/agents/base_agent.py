@@ -91,13 +91,26 @@ class BaseAgent(ABC):
         self.agent_name = self.__class__.__name__
         self.model_name = self.llm_provider.get_default_model()
         self.provider_name = self.llm_provider.get_provider_name()
-        logger.info(f"{self.agent_name} initialized with provider: {self.provider_name}, model: {self.model_name}")
+        
+        # Get temperature from settings based on provider
+        # Lower temperature for local models (better instruction following)
+        # Higher temperature for cloud models (more creative, but still controlled)
+        if self.provider_name == "ollama":
+            self.default_temperature = settings.ollama_temperature
+        elif self.provider_name == "gemini":
+            self.default_temperature = settings.gemini_temperature
+        elif self.provider_name == "openai":
+            self.default_temperature = settings.openai_temperature
+        else:
+            self.default_temperature = settings.default_temperature
+        
+        logger.info(f"{self.agent_name} initialized with provider: {self.provider_name}, model: {self.model_name}, temperature: {self.default_temperature}")
     
     def _call_llm(
         self,
         prompt: str,
         model: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         **kwargs
     ) -> str:
@@ -107,13 +120,17 @@ class BaseAgent(ABC):
         Args:
             prompt: Input prompt
             model: Model name override (uses provider default if None)
-            temperature: Sampling temperature
+            temperature: Sampling temperature (uses agent default from settings if None)
             max_tokens: Maximum tokens to generate
             **kwargs: Provider-specific parameters
             
         Returns:
             Model response text
         """
+        # Use agent's default temperature if not explicitly provided
+        if temperature is None:
+            temperature = self.default_temperature
+        
         model_to_use = model or self.model_name
         logger.debug(f"{self.agent_name} calling LLM (model: {model_to_use}, prompt length: {len(prompt)}, temperature: {temperature})")
         

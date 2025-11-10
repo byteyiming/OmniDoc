@@ -54,6 +54,7 @@ class GenerationRequest(BaseModel):
     user_idea: str
     project_id: Optional[str] = None
     profile: Optional[str] = "team"  # "team" or "individual"
+    provider_name: Optional[str] = None  # LLM provider: "ollama", "gemini", "openai" (uses env var if None)
 
 
 class GenerationResponse(BaseModel):
@@ -487,13 +488,15 @@ async def generate_docs(request: GenerationRequest, background_tasks: Background
             run_generation,
             request.user_idea,
             project_id,
-            request.profile
+            request.profile,
+            request.provider_name
         )
         
         project_status[project_id] = {
             "status": "in_progress",
             "user_idea": request.user_idea,
             "profile": request.profile,
+            "provider_name": request.provider_name or "default",
             "started_at": datetime.now().isoformat(),
             "completed_agents": []
         }
@@ -507,10 +510,21 @@ async def generate_docs(request: GenerationRequest, background_tasks: Background
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def run_generation(user_idea: str, project_id: str, profile: str = "team"):
+def run_generation(user_idea: str, project_id: str, profile: str = "team", provider_name: Optional[str] = None):
     """Run documentation generation in background"""
     try:
-        results = coordinator.generate_all_docs(user_idea, project_id, profile)
+        # Create a new coordinator with the specified provider (or use global one if provider_name is None)
+        if provider_name:
+            # Create coordinator with specific provider
+            local_context_manager = ContextManager()
+            local_coordinator = WorkflowCoordinator(
+                context_manager=local_context_manager,
+                provider_name=provider_name
+            )
+            results = local_coordinator.generate_all_docs(user_idea, project_id, profile)
+        else:
+            # Use global coordinator (uses env var or default)
+            results = coordinator.generate_all_docs(user_idea, project_id, profile)
         
         project_status[project_id] = {
             "status": "complete",
@@ -583,10 +597,34 @@ async def download_document(project_id: str, doc_type: str):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     
+    # Determine media type based on file extension
+    media_type_map = {
+        '.pdf': 'application/pdf',
+        '.html': 'text/html',
+        '.md': 'text/markdown',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.txt': 'text/plain',
+    }
+    
+    file_ext = file_path.suffix.lower()
+    media_type = media_type_map.get(file_ext, 'application/octet-stream')
+    
+    # Set appropriate headers for secure PDF download
+    headers = {}
+    
+    # For PDF files, set content-disposition for download
+    if file_ext == '.pdf':
+        headers['Content-Disposition'] = f'attachment; filename="{file_path.name}"'
+        headers['Content-Type'] = 'application/pdf'
+        headers['X-Content-Type-Options'] = 'nosniff'
+    else:
+        headers['Content-Disposition'] = f'inline; filename="{file_path.name}"'
+    
     return FileResponse(
         path=file_path,
         filename=file_path.name,
-        media_type='application/octet-stream'
+        media_type=media_type,
+        headers=headers
     )
 
 
