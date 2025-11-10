@@ -682,72 +682,162 @@ class WorkflowCoordinator:
             results["files"]["quality_review"] = quality_review_path
             results["status"]["quality_review"] = "complete"
             
-            # Step 17.25: Auto-Fix Loop (Optional - can be enabled via settings)
-            # Read quality review and automatically improve documents with low scores
+            # Step 17.25: Auto-Fix Loop (Self-Correction System)
+            # Automatically improve documents with low quality scores based on quality review feedback
+            # This allows local models (like mixtral) to iteratively improve their output
             try:
                 from src.config.settings import get_settings
                 settings = get_settings()
+                
+                # Enable auto-fix via environment variable or settings
+                # Default: false (can be enabled with ENABLE_AUTO_FIX=true)
                 enable_auto_fix = getattr(settings, 'enable_auto_fix', False) or os.getenv("ENABLE_AUTO_FIX", "false").lower() == "true"
+                # Quality threshold for triggering auto-fix (default: 70)
+                fix_threshold = float(os.getenv("AUTO_FIX_THRESHOLD", "70.0"))
                 
                 if enable_auto_fix:
-                    logger.info("Auto-Fix Loop: Analyzing quality review and improving documents")
+                    logger.info("🔧 Auto-Fix Loop: Analyzing quality review and improving documents with low scores")
                     quality_review_content = self.file_manager.read_file(quality_review_path)
                     
-                    # Extract quality scores and identify documents that need improvement
-                    # Look for documents with scores < 70 or "High" priority issues
-                    score_pattern = r'Overall Quality Score:\s*(\d+)/100'
-                    scores = re.findall(score_pattern, quality_review_content)
+                    # Extract overall quality score
+                    overall_score_pattern = r'Overall Quality Score:\s*(\d+)/100'
+                    overall_scores = re.findall(overall_score_pattern, quality_review_content)
+                    overall_score = int(overall_scores[0]) if overall_scores else 100
                     
-                    # If overall score is low or specific documents have issues, improve them
-                    overall_score = int(scores[0]) if scores else 100
+                    # Extract individual document scores
+                    # Pattern: "## Document Name" followed by score or "Quality Score: X/100"
+                    document_scores = {}
                     
-                    if overall_score < 70:
-                        logger.info(f"Overall quality score is {overall_score}/100, triggering auto-fix loop")
+                    # Map document names to AgentType
+                    doc_name_to_agent_type = {
+                        "Technical Specification": AgentType.TECHNICAL_DOCUMENTATION,
+                        "Technical Documentation": AgentType.TECHNICAL_DOCUMENTATION,
+                        "API Documentation": AgentType.API_DOCUMENTATION,
+                        "Database Schema": AgentType.DATABASE_SCHEMA,
+                        "Developer Documentation": AgentType.DEVELOPER_DOCUMENTATION,
+                        "Test Documentation": AgentType.TEST_DOCUMENTATION,
+                        "User Documentation": AgentType.USER_DOCUMENTATION,
+                        "Requirements": AgentType.REQUIREMENTS_ANALYST,
+                        "Project Charter": AgentType.PROJECT_CHARTER,
+                        "User Stories": AgentType.USER_STORIES,
+                        "PM Documentation": AgentType.PM_DOCUMENTATION,
+                    }
+                    
+                    # Extract document-specific scores
+                    # Look for patterns like "Quality Score: 45/100" or "Score: 45" within document sections
+                    doc_section_pattern = r'##\s+([^\n]+)\s*\n(?:.*?\n)*?Quality Score:\s*(\d+)/100'
+                    doc_matches = re.findall(doc_section_pattern, quality_review_content, re.MULTILINE | re.DOTALL)
+                    
+                    for doc_name, score_str in doc_matches:
+                        doc_name = doc_name.strip()
+                        score = int(score_str)
+                        document_scores[doc_name] = score
+                        logger.debug(f"Found document score: {doc_name} = {score}/100")
+                    
+                    # Also try alternative pattern: "Score: X" or "Overall Score: X"
+                    alt_pattern = r'##\s+([^\n]+)\s*\n(?:.*?\n)*?(?:Score|Overall Score):\s*(\d+)'
+                    alt_matches = re.findall(alt_pattern, quality_review_content, re.MULTILINE | re.DOTALL)
+                    for doc_name, score_str in alt_matches:
+                        doc_name = doc_name.strip()
+                        if doc_name not in document_scores:
+                            score = int(score_str)
+                            # Assume it's out of 100 if not specified
+                            if score < 100:
+                                document_scores[doc_name] = score
+                    
+                    logger.info(f"📊 Quality Analysis: Overall score = {overall_score}/100, Found {len(document_scores)} document scores")
+                    
+                    # Determine which documents need improvement
+                    documents_to_improve = []
+                    
+                    # If overall score is below threshold, improve all key documents
+                    if overall_score < fix_threshold:
+                        logger.info(f"⚠️  Overall quality score ({overall_score}/100) is below threshold ({fix_threshold}), triggering auto-fix")
                         
-                        # Improve key documents (prioritize technical and API docs)
-                        documents_to_improve = [
-                            (AgentType.TECHNICAL_DOCUMENTATION, "technical_documentation", "Technical Specification"),
+                        # Priority list: Most critical documents first
+                        priority_docs = [
+                            (AgentType.TECHNICAL_DOCUMENTATION, "technical_documentation", "Technical Specification", "Technical Documentation"),
                             (AgentType.API_DOCUMENTATION, "api_documentation", "API Documentation"),
                             (AgentType.DATABASE_SCHEMA, "database_schema", "Database Schema"),
+                            (AgentType.DEVELOPER_DOCUMENTATION, "developer_documentation", "Developer Documentation"),
+                            (AgentType.REQUIREMENTS_ANALYST, "requirements", "Requirements"),
                         ]
                         
-                        improved_count = 0
-                        for agent_type, doc_key, doc_name in documents_to_improve:
+                        for agent_type, doc_key, *doc_names in priority_docs:
                             if agent_type in all_documentation:
-                                try:
-                                    original_doc = all_documentation[agent_type]
-                                    original_file_path = document_file_paths.get(agent_type)
+                                # Check if this document has a specific score
+                                doc_score = None
+                                for doc_name in doc_names:
+                                    if doc_name in document_scores:
+                                        doc_score = document_scores[doc_name]
+                                        break
+                                
+                                # Include if: 1) has specific score < threshold, or 2) overall score < threshold
+                                if (doc_score is not None and doc_score < fix_threshold) or (doc_score is None and overall_score < fix_threshold):
+                                    documents_to_improve.append((agent_type, doc_key, doc_names[0], doc_score))
+                                    logger.info(f"  📝 Will improve: {doc_names[0]} (score: {doc_score if doc_score else 'N/A'}/100)")
+                    
+                    # Improve documents
+                    improved_count = 0
+                    improved_docs = []
+                    
+                    for agent_type, doc_key, doc_name, doc_score in documents_to_improve:
+                        if agent_type in all_documentation:
+                            try:
+                                original_doc = all_documentation[agent_type]
+                                original_file_path = document_file_paths.get(agent_type)
+                                
+                                if original_file_path:
+                                    logger.info(f"🔧 Auto-improving {doc_name}...")
                                     
-                                    if original_file_path:
-                                        logger.info(f"Auto-improving {doc_name}...")
-                                        improved_path = self.document_improver.improve_and_save(
-                                            original_document=original_doc,
-                                            document_type=doc_key,
-                                            quality_feedback=quality_review_content,
-                                            output_filename=Path(original_file_path).name,
-                                            project_id=project_id,
-                                            context_manager=self.context_manager,
-                                            agent_type=agent_type
-                                        )
-                                        
-                                        # Update all_documentation with improved version
-                                        improved_content = self.file_manager.read_file(improved_path)
-                                        all_documentation[agent_type] = improved_content
-                                        document_file_paths[agent_type] = improved_path
-                                        improved_count += 1
-                                        logger.info(f"✅ Improved {doc_name}")
-                                except Exception as e:
-                                    logger.warning(f"Could not improve {doc_name}: {e}")
-                        
-                        if improved_count > 0:
-                            logger.info(f"Auto-Fix Loop: Improved {improved_count} documents")
-                            results["status"]["auto_fix"] = f"improved {improved_count} documents"
-                        else:
-                            logger.info("Auto-Fix Loop: No documents needed improvement")
+                                    # Extract document-specific feedback from quality review
+                                    # Try to find the section for this document
+                                    doc_feedback = quality_review_content
+                                    doc_section_pattern = rf'##\s+{re.escape(doc_name)}\s*\n(.*?)(?=##\s+|$)'
+                                    doc_section_match = re.search(doc_section_pattern, quality_review_content, re.MULTILINE | re.DOTALL)
+                                    if doc_section_match:
+                                        doc_feedback = doc_section_match.group(1)
+                                        logger.debug(f"Found specific feedback section for {doc_name}")
+                                    
+                                    improved_path = self.document_improver.improve_and_save(
+                                        original_document=original_doc,
+                                        document_type=doc_key,
+                                        quality_feedback=doc_feedback if doc_section_match else quality_review_content,
+                                        output_filename=Path(original_file_path).name,
+                                        project_id=project_id,
+                                        context_manager=self.context_manager,
+                                        agent_type=agent_type
+                                    )
+                                    
+                                    # Update all_documentation with improved version
+                                    improved_content = self.file_manager.read_file(improved_path)
+                                    all_documentation[agent_type] = improved_content
+                                    document_file_paths[agent_type] = improved_path
+                                    improved_count += 1
+                                    improved_docs.append(doc_name)
+                                    logger.info(f"✅ Improved {doc_name} (score: {doc_score if doc_score else 'N/A'}/100 → improved)")
+                                else:
+                                    logger.warning(f"⚠️  Could not find file path for {doc_name}")
+                            except Exception as e:
+                                logger.warning(f"⚠️  Could not improve {doc_name}: {e}", exc_info=True)
+                    
+                    if improved_count > 0:
+                        logger.info(f"🎉 Auto-Fix Loop: Successfully improved {improved_count} document(s): {', '.join(improved_docs)}")
+                        results["status"]["auto_fix"] = f"improved {improved_count} documents: {', '.join(improved_docs)}"
+                        results["auto_fix_details"] = {
+                            "improved_count": improved_count,
+                            "improved_documents": improved_docs,
+                            "overall_score": overall_score,
+                            "threshold": fix_threshold
+                        }
                     else:
-                        logger.info(f"Quality score is {overall_score}/100, skipping auto-fix (threshold: 70)")
+                        logger.info("✅ Auto-Fix Loop: No documents needed improvement (all scores above threshold)")
+                        results["status"]["auto_fix"] = "no improvement needed"
+                else:
+                    logger.debug(f"Auto-Fix Loop disabled (ENABLE_AUTO_FIX=false). Overall quality score: {overall_score if 'overall_score' in locals() else 'N/A'}/100")
             except Exception as e:
-                logger.warning(f"Auto-Fix Loop failed: {e}, continuing with workflow")
+                logger.warning(f"⚠️  Auto-Fix Loop failed: {e}, continuing with workflow", exc_info=True)
+                results["status"]["auto_fix"] = f"failed: {str(e)}"
             
             # Step 17.5: Generate Claude CLI Documentation
             logger.info("Generating Claude CLI Documentation")
