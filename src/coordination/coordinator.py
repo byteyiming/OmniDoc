@@ -39,6 +39,7 @@ from src.agents.code_analyst_agent import CodeAnalystAgent
 from src.utils.file_manager import FileManager
 from src.utils.cross_referencer import CrossReferencer
 from src.utils.parallel_executor import ParallelExecutor, TaskStatus
+from src.utils.async_parallel_executor import AsyncParallelExecutor, TaskStatus as AsyncTaskStatus
 from src.rate_limit.queue_manager import RequestQueue
 from src.utils.document_organizer import format_documents_by_level, get_documents_summary, get_document_level, get_document_display_name
 from src.coordination.workflow_dag import (
@@ -48,6 +49,7 @@ from src.coordination.workflow_dag import (
     get_agent_for_task,
     Phase2Task
 )
+import asyncio
 
 
 class WorkflowCoordinator:
@@ -278,6 +280,73 @@ class WorkflowCoordinator:
             )
             v1_content = self.file_manager.read_file(v1_file_path)
             logger.info(f"  ✅ V1 generated: {len(v1_content)} characters")
+        except Exception as e:
+            logger.error(f"  ❌ V1 generation failed for {agent_type.value}: {e}")
+            raise
+    
+    async def _async_run_agent_with_quality_loop(
+        self,
+        agent_instance,
+        agent_type: AgentType,
+        generate_kwargs: dict,
+        output_filename: str,
+        project_id: str,
+        quality_threshold: float = 80.0
+    ) -> tuple:
+        """
+        Runs an agent asynchronously, checks its quality, and improves it if below the threshold.
+        Async version of _run_agent_with_quality_loop.
+        
+        Args:
+            agent_instance: Agent instance to run
+            agent_type: AgentType enum value
+            generate_kwargs: Keyword arguments to pass to agent.generate_and_save()
+            output_filename: Output filename
+            project_id: Project ID
+            quality_threshold: Quality score threshold (default: 80.0)
+        
+        Returns:
+            Tuple of (final_file_path, final_content)
+        """
+        logger.info(f"🔍 Running Quality Loop (async) for {agent_type.value}...")
+        
+        # 1. GENERATE V1 (async)
+        logger.info(f"  📝 Step 1: Generating V1 (async) for {agent_type.value}...")
+        try:
+            # Use async_generate if available, otherwise run sync in executor
+            if hasattr(agent_instance, 'async_generate'):
+                # Try to use async version
+                # For generate_and_save, we need to handle file I/O separately
+                # For now, run sync version in executor
+                loop = asyncio.get_event_loop()
+                v1_file_path = await loop.run_in_executor(
+                    None,
+                    lambda: agent_instance.generate_and_save(
+                        **generate_kwargs,
+                        output_filename=output_filename,
+                        project_id=project_id,
+                        context_manager=self.context_manager
+                    )
+                )
+            else:
+                # Fallback to sync in executor
+                loop = asyncio.get_event_loop()
+                v1_file_path = await loop.run_in_executor(
+                    None,
+                    lambda: agent_instance.generate_and_save(
+                        **generate_kwargs,
+                        output_filename=output_filename,
+                        project_id=project_id,
+                        context_manager=self.context_manager
+                    )
+                )
+            
+            # Read file (can be async in future, but FileManager is sync for now)
+            v1_content = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.file_manager.read_file(v1_file_path)
+            )
+            logger.info(f"  ✅ V1 generated (async): {len(v1_content)} characters")
         except Exception as e:
             logger.error(f"  ❌ V1 generation failed for {agent_type.value}: {e}")
             raise
