@@ -55,23 +55,9 @@ coverage.xml
 .DS_Store
 Thumbs.db
 
-# Markdown files in root (except README and key docs)
+# Markdown files in root (except README)
 *.md
 !README.md
-!ENV_SETUP.md
-!OLLAMA_TOKEN_FIX.md
-!QUALITY_SCORES_ANALYSIS.md
-!SWITCH_LLM_PROVIDER.md
-!HYBRID_MODE_GUIDE.md
-!CODE_SWITCH_PROVIDER.md
-!TEMPERATURE_CONFIG.md
-!SUMMARY_LENGTH_CONFIG.md
-!PDF_DOWNLOAD_SECURITY.md
-!OLLAMA_TIMEOUT_FIX.md
-!OLLAMA_500_ERROR_FIX.md
-!AUTO_FIX_LOOP_GUIDE.md
-!LOCAL_MODEL_OPTIMIZATION.md
-!HYBRID_WORKFLOW_GUIDE.md
 
 
 # Documentation files (organized in docs/)
