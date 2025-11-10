@@ -69,23 +69,36 @@ class QualityChecker:
         Returns:
             dict with completeness score, found/missing sections
         """
+        return self.check_sections_with_list(content, self.required_sections)
+    
+    def check_sections_with_list(self, content: str, required_sections: List[str]) -> Dict:
+        """
+        Check if required sections are present (with custom section list)
+        
+        Args:
+            content: Markdown content to check
+            required_sections: List of required section patterns (regex)
+            
+        Returns:
+            dict with completeness score, found/missing sections
+        """
         found_sections = []
         missing_sections = []
         
-        for section_pattern in self.required_sections:
+        for section_pattern in required_sections:
             if re.search(section_pattern, content, re.MULTILINE | re.IGNORECASE):
                 found_sections.append(section_pattern)
             else:
                 missing_sections.append(section_pattern)
         
-        completeness_score = (len(found_sections) / len(self.required_sections) * 100) if self.required_sections else 100
+        completeness_score = (len(found_sections) / len(required_sections) * 100) if required_sections else 100
         
         return {
             "completeness_score": completeness_score,
             "passed": len(missing_sections) == 0,
             "found_sections": found_sections,
             "missing_sections": missing_sections,
-            "required_count": len(self.required_sections),
+            "required_count": len(required_sections),
             "found_count": len(found_sections)
         }
     
@@ -140,7 +153,7 @@ class QualityChecker:
                 "error": str(e)
             }
     
-    def check_quality(self, content: str, weights: Optional[Dict[str, float]] = None) -> Dict:
+    def check_quality(self, content: str, weights: Optional[Dict[str, float]] = None, dynamic_required_sections: Optional[List[str]] = None) -> Dict:
         """
         Perform comprehensive quality check
         
@@ -148,6 +161,7 @@ class QualityChecker:
             content: Document content to check
             weights: Custom weights for overall score calculation
                     (default: word_count=0.2, completeness=0.5, readability=0.3)
+            dynamic_required_sections: Optional list of required section patterns to override default
         
         Returns:
             Comprehensive quality report
@@ -161,7 +175,9 @@ class QualityChecker:
         
         # Run all checks
         word_count_result = self.check_word_count(content)
-        sections_result = self.check_sections(content)
+        # Use dynamic sections if provided, otherwise use default
+        sections_to_check = dynamic_required_sections if dynamic_required_sections is not None else self.required_sections
+        sections_result = self.check_sections_with_list(content, sections_to_check)
         readability_result = self.check_readability(content)
         
         # Handle readability score - if unavailable, adjust weights

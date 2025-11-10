@@ -261,6 +261,33 @@ class DocumentTypeQualityChecker:
         
         return result
     
+    def get_all_checklists(self) -> Dict[AgentType, List[str]]:
+        """
+        Get all quality checklists mapped by AgentType
+        
+        Returns:
+            Dict mapping AgentType to list of required section patterns
+        """
+        return {
+            agent_type: requirements["required_sections"]
+            for agent_type, requirements in DOCUMENT_TYPE_REQUIREMENTS.items()
+        }
+    
+    def get_checklist_for_agent(self, agent_type: AgentType) -> Optional[List[str]]:
+        """
+        Get quality checklist for a specific agent type
+        
+        Args:
+            agent_type: AgentType enum value
+            
+        Returns:
+            List of required section patterns, or None if not found
+        """
+        requirements = DOCUMENT_TYPE_REQUIREMENTS.get(agent_type)
+        if requirements:
+            return requirements["required_sections"]
+        return None
+    
     def check_multiple_documents(
         self,
         documents: Dict[str, str],

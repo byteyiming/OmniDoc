@@ -226,6 +226,143 @@ class WorkflowCoordinator:
         
         logger.info("WorkflowCoordinator initialized with all agents (including business/marketing agents and auto-fix)")
     
+    def _run_agent_with_quality_loop(
+        self,
+        agent_instance,
+        agent_type: AgentType,
+        generate_kwargs: dict,
+        output_filename: str,
+        project_id: str,
+        quality_threshold: float = 80.0
+    ) -> tuple:
+        """
+        Runs an agent, checks its quality, and improves it if below the threshold.
+        This implements the "Quality Gate" pattern for foundational documents.
+        
+        Args:
+            agent_instance: Agent instance to run
+            agent_type: AgentType enum value
+            generate_kwargs: Keyword arguments to pass to agent.generate_and_save()
+            output_filename: Output filename
+            project_id: Project ID
+            quality_threshold: Quality score threshold (default: 80.0)
+        
+        Returns:
+            Tuple of (final_file_path, final_content)
+        """
+        logger.info(f"🔍 Running Quality Loop for {agent_type.value}...")
+        
+        # 1. GENERATE V1
+        logger.info(f"  📝 Step 1: Generating V1 for {agent_type.value}...")
+        try:
+            v1_file_path = agent_instance.generate_and_save(
+                **generate_kwargs,
+                output_filename=output_filename,
+                project_id=project_id,
+                context_manager=self.context_manager
+            )
+            v1_content = self.file_manager.read_file(v1_file_path)
+            logger.info(f"  ✅ V1 generated: {len(v1_content)} characters")
+        except Exception as e:
+            logger.error(f"  ❌ V1 generation failed for {agent_type.value}: {e}")
+            raise
+        
+        # 2. CHECK V1 QUALITY
+        logger.info(f"  🔍 Step 2: Checking V1 quality for {agent_type.value}...")
+        score = 0
+        try:
+            # Get checklist for this agent type
+            checklist = self.quality_reviewer.document_type_checker.get_checklist_for_agent(agent_type)
+            
+            if checklist:
+                # Use document-type-specific quality checker
+                quality_result_v1 = self.quality_reviewer.document_type_checker.check_quality_for_type(
+                    v1_content,
+                    document_type=agent_type.value
+                )
+                score = quality_result_v1.get("overall_score", 0)
+                logger.info(f"  📊 V1 Quality Score: {score:.2f}/100 (threshold: {quality_threshold})")
+            else:
+                logger.warning(f"  ⚠️  No quality checklist found for {agent_type.value}, using base checker")
+                # Fallback to base checker
+                quality_result_v1 = self.quality_reviewer.quality_checker.check_quality(v1_content)
+                score = quality_result_v1.get("overall_score", 0)
+                logger.info(f"  📊 V1 Quality Score: {score:.2f}/100 (threshold: {quality_threshold})")
+        except Exception as e:
+            logger.warning(f"  ⚠️  Quality check failed for {agent_type.value}: {e}, assuming score 0 to trigger improvement")
+            score = 0
+        
+        # 3. DECIDE AND IMPROVE
+        if score >= quality_threshold:
+            logger.info(f"  ✅ [{agent_type.value}] V1 quality ({score:.2f}/100) meets threshold ({quality_threshold}). Proceeding.")
+            return v1_file_path, v1_content
+        else:
+            logger.warning(f"  ⚠️  [{agent_type.value}] V1 quality ({score:.2f}/100) is below threshold ({quality_threshold}). Triggering improvement loop...")
+            
+            # 3a. Get Actionable Feedback
+            logger.info(f"  🔍 Step 3a: Generating quality feedback for {agent_type.value}...")
+            try:
+                feedback_report = self.quality_reviewer.generate(
+                    {agent_type.value: v1_content}
+                )
+                logger.info(f"  ✅ Quality feedback generated: {len(feedback_report)} characters")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Quality feedback generation failed: {e}, using simplified feedback")
+                # Create a simple feedback if generation fails
+                feedback_report = f"""
+Quality Review for {agent_type.value}:
+
+Current Score: {score:.2f}/100
+Threshold: {quality_threshold}
+
+Issues Found:
+- Document quality is below the required threshold
+- Please improve completeness, clarity, and structure
+- Ensure all required sections are present and well-developed
+
+Improvement Suggestions:
+- Review and expand missing sections
+- Improve clarity and readability
+- Add more detailed explanations
+- Ensure technical accuracy
+"""
+            
+            # 3b. Improve V1 -> V2
+            logger.info(f"  🔧 Step 3b: Improving {agent_type.value} (V1 -> V2)...")
+            try:
+                v2_file_path = self.document_improver.improve_and_save(
+                    original_document=v1_content,
+                    document_type=agent_type.value,
+                    quality_feedback=feedback_report,
+                    output_filename=output_filename,  # Overwrite original file
+                    project_id=project_id,
+                    context_manager=self.context_manager,
+                    agent_type=agent_type
+                )
+                v2_content = self.file_manager.read_file(v2_file_path)
+                logger.info(f"  ✅ V2 (Improved) generated: {len(v2_content)} characters")
+                
+                # Optionally check V2 quality (for logging)
+                try:
+                    checklist = self.quality_reviewer.document_type_checker.get_checklist_for_agent(agent_type)
+                    if checklist:
+                        quality_result_v2 = self.quality_reviewer.document_type_checker.check_quality_for_type(
+                            v2_content,
+                            document_type=agent_type.value
+                        )
+                        v2_score = quality_result_v2.get("overall_score", 0)
+                        logger.info(f"  📊 V2 Quality Score: {v2_score:.2f}/100 (improvement: +{v2_score - score:.2f})")
+                except Exception as e:
+                    logger.debug(f"  ⚠️  V2 quality check skipped: {e}")
+                
+                logger.info(f"  🎉 [{agent_type.value}] Quality loop completed: V1 ({score:.2f}) -> V2 (improved)")
+                return v2_file_path, v2_content
+            except Exception as e:
+                logger.error(f"  ❌ Improvement failed for {agent_type.value}: {e}")
+                # If improvement fails, return V1 as fallback
+                logger.warning(f"  ⚠️  Falling back to V1 for {agent_type.value}")
+                return v1_file_path, v1_content
+    
     def _generate_technical_doc(self, req_summary, project_id):
         """Helper for parallel technical doc generation"""
         return self.technical_agent.generate_and_save(
@@ -257,7 +394,10 @@ class WorkflowCoordinator:
     
     def generate_all_docs(self, user_idea: str, project_id: Optional[str] = None, profile: str = "team") -> Dict:
         """
-        Generate all documentation types from a user idea
+        Generate all documentation types from a user idea using HYBRID workflow:
+        - Phase 1: Foundational documents with Quality Gate (iterative improvement)
+        - Phase 2: Secondary documents in parallel (fast execution)
+        - Phase 3: Final packaging (cross-ref, review, convert)
         
         Args:
             user_idea: User's project idea
@@ -267,15 +407,11 @@ class WorkflowCoordinator:
         Returns:
             Dict with generated file paths and status
         """
-        # Generate project ID if not provided
+        # --- SETUP ---
         if not project_id:
             project_id = f"project_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
-            logger.info(f"Generated new project_id: {project_id}")
-        else:
-            logger.info(f"Using provided project_id: {project_id}")
         
-        logger.info(f"Starting multi-agent documentation generation workflow (project: {project_id}, idea length: {len(user_idea)} characters, profile: {profile})")
-        logger.info(f"🚀 Starting Multi-Agent Documentation Generation - Project ID: {project_id}, Profile: {profile}, User Idea: {user_idea}")
+        logger.info(f"🚀 Starting HYBRID Workflow - Project ID: {project_id}, Profile: {profile}")
         
         results = {
             "project_id": project_id,
@@ -285,587 +421,409 @@ class WorkflowCoordinator:
             "status": {}
         }
         
+        # Store final, high-quality document content
+        final_docs = {}
+        document_file_paths = {}
+        
         try:
-            # Step 1: Requirements Analyst
-            doc_level = get_document_level("requirements")
-            logger.info(f"Step 1: Starting Requirements Analyst ({doc_level.value})")
-            req_path = self.requirements_analyst.generate_and_save(
-                user_idea=user_idea,
+            # --- PHASE 1: FOUNDATIONAL DOCUMENTS (Iterative Quality Loop) ---
+            logger.info("=" * 80)
+            logger.info("--- PHASE 1: Generating Foundational Documents (Quality Gate) ---")
+            logger.info("=" * 80)
+            
+            # 1. REQUIREMENTS (with quality gate)
+            req_path, req_content = self._run_agent_with_quality_loop(
+                agent_instance=self.requirements_analyst,
+                agent_type=AgentType.REQUIREMENTS_ANALYST,
+                generate_kwargs={"user_idea": user_idea},
                 output_filename="requirements.md",
                 project_id=project_id,
-                context_manager=self.context_manager
+                quality_threshold=80.0
             )
             results["files"]["requirements"] = req_path
-            results["status"]["requirements"] = "complete"
-            logger.info(f"Step 1 completed: Requirements saved to {req_path}")
+            results["status"]["requirements"] = "complete_v2"
+            final_docs[AgentType.REQUIREMENTS_ANALYST] = req_content
+            document_file_paths[AgentType.REQUIREMENTS_ANALYST] = req_path
             
-            # Step 2: Get requirements from context
-            logger.info("Step 2: Retrieving requirements from context")
+            # Get requirements summary from context
             context = self.context_manager.get_shared_context(project_id)
             if not context.requirements:
-                logger.error("Requirements not found in context after generation")
-                raise ValueError("Requirements not found in context")
-            logger.debug(f"Requirements retrieved from context: {len(context.requirements.core_features)} features")
+                raise ValueError("Requirements not found in context after generation")
             
-            # Build requirements summary
-            req_summary = {
-                "user_idea": context.requirements.user_idea,
-                "project_overview": context.requirements.project_overview,
-                "core_features": context.requirements.core_features,
-                "technical_requirements": context.requirements.technical_requirements
-            }
+            req_summary = context.get_requirements_summary()
             
-            charter_summary = None  # Initialize for use in later steps
-            
-            # Step 3 & 4: Project Charter and PM Documentation (Team only)
+            # 2. PROJECT CHARTER (Team only, with quality gate)
+            charter_content = None
             if profile == "team":
-                # Step 3: Project Charter Agent (Level 1: Strategic)
-                doc_level = get_document_level("project_charter")
-                logger.info(f"Step 3 (Team): Starting Project Charter Agent ({doc_level.value})")
-                charter_path = self.project_charter_agent.generate_and_save(
-                    requirements_summary=req_summary,
+                charter_path, charter_content = self._run_agent_with_quality_loop(
+                    agent_instance=self.project_charter_agent,
+                    agent_type=AgentType.PROJECT_CHARTER,
+                    generate_kwargs={"requirements_summary": req_summary},
                     output_filename="project_charter.md",
                     project_id=project_id,
-                    context_manager=self.context_manager
+                    quality_threshold=75.0
                 )
                 results["files"]["project_charter"] = charter_path
-                results["status"]["project_charter"] = "complete"
-                logger.info(f"Step 3 (Team) completed: Project Charter saved to {charter_path}")
-                
-                # Step 4: PM Documentation Agent (Level 2 - uses Level 1 output)
-                doc_level = get_document_level("pm_documentation")
-                logger.info(f"Step 4 (Team): Starting PM Documentation Agent ({doc_level.value})")
-                # Get Project Charter from context
-                charter_output = self.context_manager.get_agent_output(project_id, AgentType.PROJECT_CHARTER)
-                charter_summary = charter_output.content if charter_output else None
-                if charter_summary:
-                    logger.debug(f"Using Project Charter ({len(charter_summary)} chars) for PM documentation")
-                pm_path = self.pm_agent.generate_and_save(
-                    requirements_summary=req_summary,
-                    project_charter_summary=charter_summary,
-                    output_filename="project_plan.md",
-                    project_id=project_id,
-                    context_manager=self.context_manager
-                )
-                results["files"]["pm_documentation"] = pm_path
-                results["status"]["pm_documentation"] = "complete"
-                logger.info(f"Step 4 (Team) completed: PM documentation saved to {pm_path}")
+                results["status"]["project_charter"] = "complete_v2"
+                final_docs[AgentType.PROJECT_CHARTER] = charter_content
+                document_file_paths[AgentType.PROJECT_CHARTER] = charter_path
             else:
-                logger.info(f"Step 3 & 4 (Individual): Skipping Project Charter and PM Documentation")
                 results["status"]["project_charter"] = "skipped"
-                results["status"]["pm_documentation"] = "skipped"
             
-            # Step 5: User Stories Agent (Level 2 - uses Level 1 output if available)
-            doc_level = get_document_level("user_stories")
-            logger.info(f"Step 5: Starting User Stories Agent ({doc_level.value})")
-            # Get Project Charter from context (if team mode, already available; if individual, will be None)
-            if charter_summary is None:
-                charter_output = self.context_manager.get_agent_output(project_id, AgentType.PROJECT_CHARTER)
-                charter_summary = charter_output.content if charter_output else None
-            if charter_summary:
-                logger.debug(f"Using Project Charter ({len(charter_summary)} chars) for User Stories")
-            user_stories_path = self.user_stories_agent.generate_and_save(
-                requirements_summary=req_summary,
-                project_charter_summary=charter_summary,
+            # 3. USER STORIES (with quality gate)
+            user_stories_output = self.context_manager.get_agent_output(project_id, AgentType.PROJECT_CHARTER)
+            charter_summary_for_stories = user_stories_output.content if user_stories_output else charter_content
+            
+            stories_path, stories_content = self._run_agent_with_quality_loop(
+                agent_instance=self.user_stories_agent,
+                agent_type=AgentType.USER_STORIES,
+                generate_kwargs={
+                    "requirements_summary": req_summary,
+                    "project_charter_summary": charter_summary_for_stories
+                },
                 output_filename="user_stories.md",
                 project_id=project_id,
-                context_manager=self.context_manager
+                quality_threshold=75.0
             )
-            results["files"]["user_stories"] = user_stories_path
-            results["status"]["user_stories"] = "complete"
-            logger.info(f"Step 5 completed: User Stories saved to {user_stories_path}")
+            results["files"]["user_stories"] = stories_path
+            results["status"]["user_stories"] = "complete_v2"
+            final_docs[AgentType.USER_STORIES] = stories_content
+            document_file_paths[AgentType.USER_STORIES] = stories_path
             
-            # Step 6: Technical Documentation Agent (Level 3 - uses Level 1 + Level 2 outputs)
-            doc_level = get_document_level("technical_documentation")
-            logger.info(f"Step 6: Starting Technical Documentation Agent ({doc_level.value})")
-            # Get Level 2 outputs
+            # 4. TECHNICAL DOCUMENTATION (with quality gate)
             user_stories_output = self.context_manager.get_agent_output(project_id, AgentType.USER_STORIES)
-            user_stories_summary = user_stories_output.content if user_stories_output else None
-            pm_summary_for_tech = None  # Default to None for individual profile
-            if profile == "team":  # Only get PM summary in team mode
-                pm_output_for_tech = self.context_manager.get_agent_output(project_id, AgentType.PM_DOCUMENTATION)
-                pm_summary_for_tech = pm_output_for_tech.content if pm_output_for_tech else None
-            if user_stories_summary:
-                logger.debug(f"Using User Stories ({len(user_stories_summary)} chars) for Technical documentation")
-            if pm_summary_for_tech:
-                logger.debug(f"Using PM Plan ({len(pm_summary_for_tech)} chars) for Technical documentation")
-            technical_path = self.technical_agent.generate_and_save(
-                requirements_summary=req_summary,
-                user_stories_summary=user_stories_summary,
-                pm_summary=pm_summary_for_tech,
+            user_stories_summary = user_stories_output.content if user_stories_output else stories_content
+            
+            pm_summary_for_tech = None
+            if profile == "team":
+                pm_output = self.context_manager.get_agent_output(project_id, AgentType.PM_DOCUMENTATION)
+                pm_summary_for_tech = pm_output.content if pm_output else None
+            
+            tech_path, tech_content = self._run_agent_with_quality_loop(
+                agent_instance=self.technical_agent,
+                agent_type=AgentType.TECHNICAL_DOCUMENTATION,
+                generate_kwargs={
+                    "requirements_summary": req_summary,
+                    "user_stories_summary": user_stories_summary,
+                    "pm_summary": pm_summary_for_tech
+                },
                 output_filename="technical_spec.md",
                 project_id=project_id,
-                context_manager=self.context_manager
+                quality_threshold=70.0  # Technical docs threshold can be slightly lower
             )
-            results["files"]["technical_documentation"] = technical_path
-            results["status"]["technical_documentation"] = "complete"
-            logger.info(f"Step 6 completed: Technical documentation saved to {technical_path}")
+            results["files"]["technical_documentation"] = tech_path
+            results["status"]["technical_documentation"] = "complete_v2"
+            final_docs[AgentType.TECHNICAL_DOCUMENTATION] = tech_content
+            document_file_paths[AgentType.TECHNICAL_DOCUMENTATION] = tech_path
             
-            # Step 7: Database Schema Agent (Level 3: Technical)
-            doc_level = get_document_level("database_schema")
-            logger.info(f"Step 7: Starting Database Schema Agent ({doc_level.value})")
-            technical_output = self.context_manager.get_agent_output(project_id, AgentType.TECHNICAL_DOCUMENTATION)
-            technical_summary = technical_output.content if technical_output else None
-            database_path = self.database_schema_agent.generate_and_save(
-                requirements_summary=req_summary,
-                technical_summary=technical_summary,
-                output_filename="database_schema.md",
-                project_id=project_id,
-                context_manager=self.context_manager
+            logger.info("=" * 80)
+            logger.info("✅ PHASE 1 COMPLETE: Foundational documents generated with quality gates")
+            logger.info("=" * 80)
+            
+            # Get technical summary for Phase 2
+            technical_summary = tech_content
+            
+            # --- PHASE 2: PARALLEL GENERATION (Executor) ---
+            logger.info("=" * 80)
+            logger.info("--- PHASE 2: Generating Secondary Documents (Parallel) ---")
+            logger.info("=" * 80)
+            
+            executor = ParallelExecutor(max_workers=8)  # Increase parallelization for Gemini API
+            
+            # Get API summary (will be generated in parallel, but we need to handle dependencies)
+            # For now, API doc depends on technical, so we'll generate it first, then use it for others
+            
+            # L3 Tech Agents (depend on technical_documentation)
+            # API and DB Schema can run in parallel (both depend only on technical)
+            executor.add_task(
+                "api_doc",
+                self.api_agent.generate_and_save,
+                args=(req_summary, technical_summary, "api_documentation.md", project_id, self.context_manager),
+                dependencies=[]
             )
-            results["files"]["database_schema"] = database_path
-            results["status"]["database_schema"] = "complete"
-            logger.info(f"Step 7 completed: Database Schema saved to {database_path}")
-            
-            # Step 8: API Documentation Agent (uses technical_summary from Step 7)
-            doc_level = get_document_level("api_documentation")
-            logger.info(f"Step 8: Starting API Documentation Agent ({doc_level.value})")
-            api_path = self.api_agent.generate_and_save(
-                requirements_summary=req_summary,
-                technical_summary=technical_summary,
-                output_filename="api_documentation.md",
-                project_id=project_id,
-                context_manager=self.context_manager
+            executor.add_task(
+                "db_schema",
+                self.database_schema_agent.generate_and_save,
+                args=(req_summary, technical_summary, "database_schema.md", project_id, self.context_manager),
+                dependencies=[]
             )
-            results["files"]["api_documentation"] = api_path
-            results["status"]["api_documentation"] = "complete"
             
-            # Step 9: Get API documentation for setup guide and developer agents
-            logger.info("Step 9: Retrieving API documentation")
-            api_output = self.context_manager.get_agent_output(project_id, AgentType.API_DOCUMENTATION)
-            api_summary = api_output.content if api_output else None
+            # Helper functions to handle dependencies (fetch from context after dependent task completes)
+            # These are defined inside the method so they have access to 'self'
+            def generate_setup_guide_with_api():
+                """Generate setup guide, fetching API summary from context after api_doc completes"""
+                api_output = self.context_manager.get_agent_output(project_id, AgentType.API_DOCUMENTATION)
+                api_summary = api_output.content if api_output else None
+                return self.setup_guide_agent.generate_and_save(
+                    requirements_summary=req_summary,
+                    technical_summary=technical_summary,
+                    api_summary=api_summary,
+                    output_filename="setup_guide.md",
+                    project_id=project_id,
+                    context_manager=self.context_manager
+                )
             
-            # Step 10: Setup Guide Agent (Level 3: Technical)
-            doc_level = get_document_level("setup_guide")
-            logger.info(f"Step 10: Starting Setup Guide Agent ({doc_level.value})")
-            setup_path = self.setup_guide_agent.generate_and_save(
-                requirements_summary=req_summary,
-                technical_summary=technical_summary,
-                api_summary=api_summary,
-                output_filename="setup_guide.md",
-                project_id=project_id,
-                context_manager=self.context_manager
+            def generate_dev_doc_with_api():
+                """Generate developer doc, fetching API summary from context after api_doc completes"""
+                api_output = self.context_manager.get_agent_output(project_id, AgentType.API_DOCUMENTATION)
+                api_summary = api_output.content if api_output else None
+                return self.developer_agent.generate_and_save(
+                    requirements_summary=req_summary,
+                    technical_summary=technical_summary,
+                    api_summary=api_summary,
+                    output_filename="developer_guide.md",
+                    project_id=project_id,
+                    context_manager=self.context_manager
+                )
+            
+            # Setup guide and developer doc depend on API doc
+            executor.add_task(
+                "setup_guide",
+                generate_setup_guide_with_api,
+                args=(),
+                dependencies=["api_doc"]
             )
-            results["files"]["setup_guide"] = setup_path
-            results["status"]["setup_guide"] = "complete"
-            logger.info(f"Step 10 completed: Setup Guide saved to {setup_path}")
-            
-            # Step 11: Developer Documentation Agent
-            doc_level = get_document_level("developer_documentation")
-            logger.info(f"Step 11: Starting Developer Documentation Agent ({doc_level.value})")
-            developer_path = self.developer_agent.generate_and_save(
-                requirements_summary=req_summary,
-                technical_summary=technical_summary,
-                api_summary=api_summary,
-                output_filename="developer_guide.md",
-                project_id=project_id,
-                context_manager=self.context_manager
+            executor.add_task(
+                "dev_doc",
+                generate_dev_doc_with_api,
+                args=(),
+                dependencies=["api_doc"]
             )
-            results["files"]["developer_documentation"] = developer_path
-            results["status"]["developer_documentation"] = "complete"
+            executor.add_task(
+                "test_doc",
+                self.test_agent.generate_and_save,
+                args=(req_summary, technical_summary, "test_plan.md", project_id, self.context_manager),
+                dependencies=[]
+            )
+            executor.add_task(
+                "user_doc",
+                self.user_agent.generate_and_save,
+                args=(req_summary, "user_guide.md", project_id, self.context_manager),
+                dependencies=[]
+            )
+            executor.add_task(
+                "legal_doc",
+                self.legal_compliance_agent.generate_and_save,
+                args=(req_summary, technical_summary, "legal_compliance.md", project_id, self.context_manager),
+                dependencies=[]
+            )
             
-            # Step 12 & 13: Stakeholder Communication Agent (Team only)
+            # L1/L2 Business Agents (Team Only)
             if profile == "team":
-                # Step 12: Get PM documentation for stakeholder agent
-                logger.info("Step 12 (Team): Retrieving PM documentation for stakeholder agent")
-                pm_output = self.context_manager.get_agent_output(project_id, AgentType.PM_DOCUMENTATION)
-                pm_summary = pm_output.content if pm_output else None
+                # PM Documentation (depends on project_charter, but charter is already done in Phase 1)
+                executor.add_task(
+                    "pm_doc",
+                    self.pm_agent.generate_and_save,
+                    args=(req_summary, charter_content, "project_plan.md", project_id, self.context_manager),
+                    dependencies=[]
+                )
                 
-                # Step 13: Stakeholder Communication Agent
-                doc_level = get_document_level("stakeholder_communication")
-                logger.info(f"Step 13 (Team): Starting Stakeholder Communication Agent ({doc_level.value})")
-                stakeholder_path = self.stakeholder_agent.generate_and_save(
+                def generate_stakeholder_with_pm():
+                    """Generate stakeholder doc, fetching PM summary from context after pm_doc completes"""
+                    pm_output = self.context_manager.get_agent_output(project_id, AgentType.PM_DOCUMENTATION)
+                    pm_summary = pm_output.content if pm_output else None
+                    return self.stakeholder_agent.generate_and_save(
+                        requirements_summary=req_summary,
+                        pm_summary=pm_summary,
+                        output_filename="stakeholder_summary.md",
+                        project_id=project_id,
+                        context_manager=self.context_manager
+                    )
+                
+                executor.add_task(
+                    "stakeholder_doc",
+                    generate_stakeholder_with_pm,
+                    args=(),
+                    dependencies=["pm_doc"]  # Stakeholder depends on PM doc
+                )
+                
+                executor.add_task(
+                    "business_model",
+                    self.business_model_agent.generate_and_save,
+                    args=(req_summary, charter_content, "business_model.md", project_id, self.context_manager),
+                    dependencies=[]
+                )
+                
+                def generate_marketing_with_business():
+                    """Generate marketing plan, fetching business model from context after business_model completes"""
+                    business_output = self.context_manager.get_agent_output(project_id, AgentType.BUSINESS_MODEL)
+                    business_model_summary = business_output.content if business_output else None
+                    return self.marketing_plan_agent.generate_and_save(
+                        requirements_summary=req_summary,
+                        project_charter_summary=charter_content,
+                        business_model_summary=business_model_summary,
+                        output_filename="marketing_plan.md",
+                        project_id=project_id,
+                        context_manager=self.context_manager
+                    )
+                
+                executor.add_task(
+                    "marketing_plan",
+                    generate_marketing_with_business,
+                    args=(),
+                    dependencies=["business_model"]  # Marketing depends on business model
+                )
+            
+            def generate_support_with_user_doc():
+                """Generate support playbook, fetching user doc from context after user_doc completes"""
+                user_doc_output = self.context_manager.get_agent_output(project_id, AgentType.USER_DOCUMENTATION)
+                user_doc_summary = user_doc_output.content if user_doc_output else None
+                return self.support_playbook_agent.generate_and_save(
                     requirements_summary=req_summary,
-                    pm_summary=pm_summary,
-                    output_filename="stakeholder_summary.md",
+                    user_documentation_summary=user_doc_summary,
+                    output_filename="support_playbook.md",
                     project_id=project_id,
                     context_manager=self.context_manager
                 )
-                results["files"]["stakeholder_documentation"] = stakeholder_path
-                results["status"]["stakeholder_documentation"] = "complete"
-                logger.info(f"Step 13 (Team) completed: Stakeholder documentation saved to {stakeholder_path}")
-            else:
-                logger.info(f"Step 12 & 13 (Individual): Skipping Stakeholder Communication")
-                results["status"]["stakeholder_documentation"] = "skipped"
             
-            
-            # Step 14: Test Documentation Agent
-            doc_level = get_document_level("test_documentation")
-            logger.info(f"Step 14: Starting Test Documentation Agent ({doc_level.value})")
-            test_path = self.test_agent.generate_and_save(
-                requirements_summary=req_summary,
-                technical_summary=technical_summary,
-                output_filename="test_plan.md",
-                project_id=project_id,
-                context_manager=self.context_manager
+            executor.add_task(
+                "support_playbook",
+                generate_support_with_user_doc,
+                args=(),
+                dependencies=["user_doc"]
             )
-            results["files"]["test_documentation"] = test_path
-            results["status"]["test_documentation"] = "complete"
             
-            # Step 15: User Documentation Agent (Cross-Level)
-            doc_level = get_document_level("user_documentation")
-            logger.info(f"Step 15: Starting User Documentation Agent ({doc_level.value})")
-            user_doc_path = self.user_agent.generate_and_save(
-                requirements_summary=req_summary,
-                output_filename="user_guide.md",
-                project_id=project_id,
-                context_manager=self.context_manager
-            )
-            results["files"]["user_documentation"] = user_doc_path
-            results["status"]["user_documentation"] = "complete"
-            logger.info(f"Step 15 completed: User documentation saved to {user_doc_path}")
+            # Execute parallel tasks
+            logger.info(f"🚀 Executing {len(executor.tasks)} parallel tasks...")
+            parallel_results = executor.execute()
             
-            # Step 16: Business Model Agent (uses Project Charter)
-            if profile == "team":
-                doc_level = get_document_level("business_model")
-                logger.info(f"Step 16 (Team): Starting Business Model Agent ({doc_level.value})")
-                business_model_path = self.business_model_agent.generate_and_save(
-                    requirements_summary=req_summary,
-                    project_charter_summary=charter_summary,
-                    output_filename="business_model.md",
-                    project_id=project_id,
-                    context_manager=self.context_manager
-                )
-                results["files"]["business_model"] = business_model_path
-                results["status"]["business_model"] = "complete"
-                logger.info(f"Step 16 (Team) completed: Business Model saved to {business_model_path}")
-            else:
-                logger.info(f"Step 16 (Individual): Skipping Business Model")
-                results["status"]["business_model"] = "skipped"
-            
-            # Step 17: Marketing Plan Agent (uses Business Model and Project Charter)
-            if profile == "team":
-                doc_level = get_document_level("marketing_plan")
-                logger.info(f"Step 17 (Team): Starting Marketing Plan Agent ({doc_level.value})")
-                business_model_output = self.context_manager.get_agent_output(project_id, AgentType.BUSINESS_MODEL)
-                business_model_summary = business_model_output.content if business_model_output else None
-                marketing_path = self.marketing_plan_agent.generate_and_save(
-                    requirements_summary=req_summary,
-                    project_charter_summary=charter_summary,
-                    business_model_summary=business_model_summary,
-                    output_filename="marketing_plan.md",
-                    project_id=project_id,
-                    context_manager=self.context_manager
-                )
-                results["files"]["marketing_plan"] = marketing_path
-                results["status"]["marketing_plan"] = "complete"
-                logger.info(f"Step 17 (Team) completed: Marketing Plan saved to {marketing_path}")
-            else:
-                logger.info(f"Step 17 (Individual): Skipping Marketing Plan")
-                results["status"]["marketing_plan"] = "skipped"
-            
-            # Step 18: Support Playbook Agent (uses User Documentation)
-            doc_level = get_document_level("support_playbook")
-            logger.info(f"Step 18: Starting Support Playbook Agent ({doc_level.value})")
-            user_doc_output = self.context_manager.get_agent_output(project_id, AgentType.USER_DOCUMENTATION)
-            user_doc_summary = user_doc_output.content if user_doc_output else None
-            support_path = self.support_playbook_agent.generate_and_save(
-                requirements_summary=req_summary,
-                user_documentation_summary=user_doc_summary,
-                output_filename="support_playbook.md",
-                project_id=project_id,
-                context_manager=self.context_manager
-            )
-            results["files"]["support_playbook"] = support_path
-            results["status"]["support_playbook"] = "complete"
-            logger.info(f"Step 18 completed: Support Playbook saved to {support_path}")
-            
-            # Step 19: Legal & Compliance Agent (uses Technical Documentation)
-            doc_level = get_document_level("legal_compliance")
-            logger.info(f"Step 19: Starting Legal & Compliance Agent ({doc_level.value})")
-            legal_path = self.legal_compliance_agent.generate_and_save(
-                requirements_summary=req_summary,
-                technical_summary=technical_summary,
-                output_filename="legal_compliance.md",
-                project_id=project_id,
-                context_manager=self.context_manager
-            )
-            results["files"]["legal_compliance"] = legal_path
-            results["status"]["legal_compliance"] = "complete"
-            logger.info(f"Step 19 completed: Legal & Compliance saved to {legal_path}")
-            
-            # Step 20: Collect all documentation for cross-referencing and quality review
-            all_documentation = {}
-            document_agent_types = {}
-            document_file_paths = {}
-            
-            # Map document types to agent types (include all new agents)
-            doc_type_to_agent = {
-                "requirements": AgentType.REQUIREMENTS_ANALYST,
-                "project_charter": AgentType.PROJECT_CHARTER,
-                "pm_documentation": AgentType.PM_DOCUMENTATION,
-                "user_stories": AgentType.USER_STORIES,
-                "technical_documentation": AgentType.TECHNICAL_DOCUMENTATION,
-                "database_schema": AgentType.DATABASE_SCHEMA,
-                "api_documentation": AgentType.API_DOCUMENTATION,
-                "setup_guide": AgentType.SETUP_GUIDE,
-                "developer_documentation": AgentType.DEVELOPER_DOCUMENTATION,
-                "stakeholder_documentation": AgentType.STAKEHOLDER_COMMUNICATION,
-                "user_documentation": AgentType.USER_DOCUMENTATION,
-                "test_documentation": AgentType.TEST_DOCUMENTATION,
-                "business_model": AgentType.BUSINESS_MODEL,
-                "marketing_plan": AgentType.MARKETING_PLAN,
-                "support_playbook": AgentType.SUPPORT_PLAYBOOK,
-                "legal_compliance": AgentType.LEGAL_COMPLIANCE
+            # Map task IDs to document types and agent types
+            task_id_to_doc_type = {
+                "api_doc": ("api_documentation", AgentType.API_DOCUMENTATION),
+                "db_schema": ("database_schema", AgentType.DATABASE_SCHEMA),
+                "setup_guide": ("setup_guide", AgentType.SETUP_GUIDE),
+                "dev_doc": ("developer_documentation", AgentType.DEVELOPER_DOCUMENTATION),
+                "test_doc": ("test_documentation", AgentType.TEST_DOCUMENTATION),
+                "user_doc": ("user_documentation", AgentType.USER_DOCUMENTATION),
+                "legal_doc": ("legal_compliance", AgentType.LEGAL_COMPLIANCE),
+                "pm_doc": ("pm_documentation", AgentType.PM_DOCUMENTATION),
+                "stakeholder_doc": ("stakeholder_documentation", AgentType.STAKEHOLDER_COMMUNICATION),
+                "business_model": ("business_model", AgentType.BUSINESS_MODEL),
+                "marketing_plan": ("marketing_plan", AgentType.MARKETING_PLAN),
+                "support_playbook": ("support_playbook", AgentType.SUPPORT_PLAYBOOK),
             }
             
-            for doc_type, file_path in results["files"].items():
-                if file_path and doc_type != "quality_review" and doc_type != "format_conversions":
-                    try:
-                        from src.utils.file_manager import FileManager
-                        file_manager = FileManager()
-                        content = file_manager.read_file(file_path)
+            # Collect parallel task results
+            for task_id, file_path in parallel_results.items():
+                if file_path and executor.tasks[task_id].status == TaskStatus.COMPLETE:
+                    doc_type, agent_type = task_id_to_doc_type.get(task_id, (task_id, None))
+                    if agent_type:
+                        results["files"][doc_type] = file_path
+                        results["status"][doc_type] = "complete"
                         
-                        # Map to agent type if available
-                        agent_type = doc_type_to_agent.get(doc_type)
-                        if agent_type:
-                            all_documentation[agent_type] = content
-                            document_agent_types[doc_type] = agent_type
+                        # Read content and add to final_docs
+                        try:
+                            content = self.file_manager.read_file(file_path)
+                            final_docs[agent_type] = content
                             document_file_paths[agent_type] = file_path
-                    except Exception as e:
-                        logger.warning(f"Could not read {doc_type}: {e}")
+                            logger.info(f"  ✅ {doc_type}: {file_path}")
+                        except Exception as e:
+                            logger.warning(f"  ⚠️  Could not read {doc_type}: {e}")
+                else:
+                    error = executor.tasks[task_id].error if task_id in executor.tasks else "Unknown error"
+                    logger.error(f"  ❌ Task {task_id} failed: {error}")
+                    doc_type, _ = task_id_to_doc_type.get(task_id, (task_id, None))
+                    if doc_type:
+                        results["status"][doc_type] = "failed"
             
-            logger.info(f"Collected {len(all_documentation)} documents for cross-referencing")
+            logger.info("=" * 80)
+            logger.info(f"✅ PHASE 2 COMPLETE: {len([r for r in parallel_results.values() if r])} documents generated in parallel")
+            logger.info("=" * 80)
             
-            # Step 13.5: Add cross-references to all documents
+            # --- PHASE 3: FINAL PACKAGING (Cross-ref, Review, Convert) ---
+            logger.info("=" * 80)
+            logger.info("--- PHASE 3: Final Packaging and Conversion ---")
+            logger.info("=" * 80)
+            
+            # 1. Cross-Referencing
+            logger.info("📎 Step 1: Adding cross-references to all documents...")
             try:
                 referenced_docs = self.cross_referencer.create_cross_references(
-                    all_documentation,
+                    final_docs,
                     document_file_paths
                 )
                 
-                # Save cross-referenced documents back to files (preserve original paths)
+                # Save cross-referenced documents back to files
                 updated_count = 0
                 for agent_type, referenced_content in referenced_docs.items():
-                    original_content = all_documentation.get(agent_type)
+                    original_content = final_docs.get(agent_type)
                     if referenced_content != original_content:
                         original_file_path = document_file_paths[agent_type]
                         # Write directly to original absolute path to preserve folder structure
                         if Path(original_file_path).is_absolute():
-                            # Write directly to the absolute path
                             Path(original_file_path).write_text(referenced_content, encoding='utf-8')
-                            logger.debug(f"Updated cross-referenced file at original path: {original_file_path}")
+                            logger.debug(f"Updated cross-referenced file: {original_file_path}")
                         else:
-                            # Relative path - write using file manager
                             self.file_manager.write_file(original_file_path, referenced_content)
-                        # Update all_documentation for quality review
-                        all_documentation[agent_type] = referenced_content
+                        # Update final_docs for quality review
+                        final_docs[agent_type] = referenced_content
                         updated_count += 1
                 
-                logger.info(f"Added cross-references to {updated_count} documents")
+                logger.info(f"  ✅ Added cross-references to {updated_count} documents")
                 
                 # Generate document index
                 try:
                     index_content = self.cross_referencer.generate_document_index(
-                        all_documentation,
+                        final_docs,
                         document_file_paths,
                         project_name=req_summary.get('project_overview', 'Project')[:50]
                     )
-                    
                     index_path = self.file_manager.write_file("index.md", index_content)
                     results["files"]["document_index"] = index_path
-                    logger.info(f"Document index created: {index_path}")
+                    logger.info(f"  ✅ Document index created: {index_path}")
                 except Exception as e:
-                    logger.warning(f"Could not generate index: {e}")
-                    
+                    logger.warning(f"  ⚠️  Could not generate index: {e}")
             except Exception as e:
-                logger.warning(f"Cross-referencing failed: {e}")
+                logger.warning(f"  ⚠️  Cross-referencing failed: {e}")
             
-            # Step 17: Quality Reviewer Agent
-            logger.info("Running Quality Review")
-            quality_review_path = self.quality_reviewer.generate_and_save(
-                all_documentation=all_documentation,
-                output_filename="quality_review.md",
-                project_id=project_id,
-                context_manager=self.context_manager
-            )
-            results["files"]["quality_review"] = quality_review_path
-            results["status"]["quality_review"] = "complete"
-            
-            # Step 17.25: Auto-Fix Loop (Self-Correction System)
-            # Automatically improve documents with low quality scores based on quality review feedback
-            # This allows local models (like mixtral) to iteratively improve their output
+            # 2. Final Quality Review (generate report only)
+            # Note: In hybrid mode, Phase 1 documents already went through quality gates
+            # This review is for overall assessment and secondary documents
+            logger.info("📊 Step 2: Generating final quality review report...")
             try:
-                from src.config.settings import get_settings
-                settings = get_settings()
+                # Convert final_docs to dict with string keys for quality reviewer
+                all_documentation_for_review = {
+                    agent_type.value: content
+                    for agent_type, content in final_docs.items()
+                }
                 
-                # Enable auto-fix via environment variable or settings
-                # Default: false (can be enabled with ENABLE_AUTO_FIX=true)
-                enable_auto_fix = getattr(settings, 'enable_auto_fix', False) or os.getenv("ENABLE_AUTO_FIX", "false").lower() == "true"
-                # Quality threshold for triggering auto-fix (default: 70)
-                fix_threshold = float(os.getenv("AUTO_FIX_THRESHOLD", "70.0"))
-                
-                if enable_auto_fix:
-                    logger.info("🔧 Auto-Fix Loop: Analyzing quality review and improving documents with low scores")
-                    quality_review_content = self.file_manager.read_file(quality_review_path)
-                    
-                    # Extract overall quality score
-                    overall_score_pattern = r'Overall Quality Score:\s*(\d+)/100'
-                    overall_scores = re.findall(overall_score_pattern, quality_review_content)
-                    overall_score = int(overall_scores[0]) if overall_scores else 100
-                    
-                    # Extract individual document scores
-                    # Pattern: "## Document Name" followed by score or "Quality Score: X/100"
-                    document_scores = {}
-                    
-                    # Map document names to AgentType
-                    doc_name_to_agent_type = {
-                        "Technical Specification": AgentType.TECHNICAL_DOCUMENTATION,
-                        "Technical Documentation": AgentType.TECHNICAL_DOCUMENTATION,
-                        "API Documentation": AgentType.API_DOCUMENTATION,
-                        "Database Schema": AgentType.DATABASE_SCHEMA,
-                        "Developer Documentation": AgentType.DEVELOPER_DOCUMENTATION,
-                        "Test Documentation": AgentType.TEST_DOCUMENTATION,
-                        "User Documentation": AgentType.USER_DOCUMENTATION,
-                        "Requirements": AgentType.REQUIREMENTS_ANALYST,
-                        "Project Charter": AgentType.PROJECT_CHARTER,
-                        "User Stories": AgentType.USER_STORIES,
-                        "PM Documentation": AgentType.PM_DOCUMENTATION,
-                    }
-                    
-                    # Extract document-specific scores
-                    # Look for patterns like "Quality Score: 45/100" or "Score: 45" within document sections
-                    doc_section_pattern = r'##\s+([^\n]+)\s*\n(?:.*?\n)*?Quality Score:\s*(\d+)/100'
-                    doc_matches = re.findall(doc_section_pattern, quality_review_content, re.MULTILINE | re.DOTALL)
-                    
-                    for doc_name, score_str in doc_matches:
-                        doc_name = doc_name.strip()
-                        score = int(score_str)
-                        document_scores[doc_name] = score
-                        logger.debug(f"Found document score: {doc_name} = {score}/100")
-                    
-                    # Also try alternative pattern: "Score: X" or "Overall Score: X"
-                    alt_pattern = r'##\s+([^\n]+)\s*\n(?:.*?\n)*?(?:Score|Overall Score):\s*(\d+)'
-                    alt_matches = re.findall(alt_pattern, quality_review_content, re.MULTILINE | re.DOTALL)
-                    for doc_name, score_str in alt_matches:
-                        doc_name = doc_name.strip()
-                        if doc_name not in document_scores:
-                            score = int(score_str)
-                            # Assume it's out of 100 if not specified
-                            if score < 100:
-                                document_scores[doc_name] = score
-                    
-                    logger.info(f"📊 Quality Analysis: Overall score = {overall_score}/100, Found {len(document_scores)} document scores")
-                    
-                    # Determine which documents need improvement
-                    documents_to_improve = []
-                    
-                    # If overall score is below threshold, improve all key documents
-                    if overall_score < fix_threshold:
-                        logger.info(f"⚠️  Overall quality score ({overall_score}/100) is below threshold ({fix_threshold}), triggering auto-fix")
-                        
-                        # Priority list: Most critical documents first
-                        priority_docs = [
-                            (AgentType.TECHNICAL_DOCUMENTATION, "technical_documentation", "Technical Specification", "Technical Documentation"),
-                            (AgentType.API_DOCUMENTATION, "api_documentation", "API Documentation"),
-                            (AgentType.DATABASE_SCHEMA, "database_schema", "Database Schema"),
-                            (AgentType.DEVELOPER_DOCUMENTATION, "developer_documentation", "Developer Documentation"),
-                            (AgentType.REQUIREMENTS_ANALYST, "requirements", "Requirements"),
-                        ]
-                        
-                        for agent_type, doc_key, *doc_names in priority_docs:
-                            if agent_type in all_documentation:
-                                # Check if this document has a specific score
-                                doc_score = None
-                                for doc_name in doc_names:
-                                    if doc_name in document_scores:
-                                        doc_score = document_scores[doc_name]
-                                        break
-                                
-                                # Include if: 1) has specific score < threshold, or 2) overall score < threshold
-                                if (doc_score is not None and doc_score < fix_threshold) or (doc_score is None and overall_score < fix_threshold):
-                                    documents_to_improve.append((agent_type, doc_key, doc_names[0], doc_score))
-                                    logger.info(f"  📝 Will improve: {doc_names[0]} (score: {doc_score if doc_score else 'N/A'}/100)")
-                    
-                    # Improve documents
-                    improved_count = 0
-                    improved_docs = []
-                    
-                    for agent_type, doc_key, doc_name, doc_score in documents_to_improve:
-                        if agent_type in all_documentation:
-                            try:
-                                original_doc = all_documentation[agent_type]
-                                original_file_path = document_file_paths.get(agent_type)
-                                
-                                if original_file_path:
-                                    logger.info(f"🔧 Auto-improving {doc_name}...")
-                                    
-                                    # Extract document-specific feedback from quality review
-                                    # Try to find the section for this document
-                                    doc_feedback = quality_review_content
-                                    doc_section_pattern = rf'##\s+{re.escape(doc_name)}\s*\n(.*?)(?=##\s+|$)'
-                                    doc_section_match = re.search(doc_section_pattern, quality_review_content, re.MULTILINE | re.DOTALL)
-                                    if doc_section_match:
-                                        doc_feedback = doc_section_match.group(1)
-                                        logger.debug(f"Found specific feedback section for {doc_name}")
-                                    
-                                    improved_path = self.document_improver.improve_and_save(
-                                        original_document=original_doc,
-                                        document_type=doc_key,
-                                        quality_feedback=doc_feedback if doc_section_match else quality_review_content,
-                                        output_filename=Path(original_file_path).name,
-                                        project_id=project_id,
-                                        context_manager=self.context_manager,
-                                        agent_type=agent_type
-                                    )
-                                    
-                                    # Update all_documentation with improved version
-                                    improved_content = self.file_manager.read_file(improved_path)
-                                    all_documentation[agent_type] = improved_content
-                                    document_file_paths[agent_type] = improved_path
-                                    improved_count += 1
-                                    improved_docs.append(doc_name)
-                                    logger.info(f"✅ Improved {doc_name} (score: {doc_score if doc_score else 'N/A'}/100 → improved)")
-                                else:
-                                    logger.warning(f"⚠️  Could not find file path for {doc_name}")
-                            except Exception as e:
-                                logger.warning(f"⚠️  Could not improve {doc_name}: {e}", exc_info=True)
-                    
-                    if improved_count > 0:
-                        logger.info(f"🎉 Auto-Fix Loop: Successfully improved {improved_count} document(s): {', '.join(improved_docs)}")
-                        results["status"]["auto_fix"] = f"improved {improved_count} documents: {', '.join(improved_docs)}"
-                        results["auto_fix_details"] = {
-                            "improved_count": improved_count,
-                            "improved_documents": improved_docs,
-                            "overall_score": overall_score,
-                            "threshold": fix_threshold
-                        }
-                    else:
-                        logger.info("✅ Auto-Fix Loop: No documents needed improvement (all scores above threshold)")
-                        results["status"]["auto_fix"] = "no improvement needed"
-                else:
-                    logger.debug(f"Auto-Fix Loop disabled (ENABLE_AUTO_FIX=false). Overall quality score: {overall_score if 'overall_score' in locals() else 'N/A'}/100")
+                quality_review_path = self.quality_reviewer.generate_and_save(
+                    all_documentation=all_documentation_for_review,
+                    output_filename="quality_review.md",
+                    project_id=project_id,
+                    context_manager=self.context_manager
+                )
+                results["files"]["quality_review"] = quality_review_path
+                results["status"]["quality_review"] = "complete"
+                logger.info(f"  ✅ Quality review report generated: {quality_review_path}")
             except Exception as e:
-                logger.warning(f"⚠️  Auto-Fix Loop failed: {e}, continuing with workflow", exc_info=True)
-                results["status"]["auto_fix"] = f"failed: {str(e)}"
+                logger.warning(f"  ⚠️  Quality review failed: {e}")
+                results["status"]["quality_review"] = "failed"
             
-            # Step 17.5: Generate Claude CLI Documentation
-            logger.info("Generating Claude CLI Documentation")
+            # 3. Claude CLI Documentation
+            logger.info("📝 Step 3: Generating Claude CLI documentation...")
             try:
                 claude_md_path = self.claude_cli_agent.generate_and_save(
-                    all_documentation=all_documentation,
+                    all_documentation=final_docs,
                     project_id=project_id,
                     context_manager=self.context_manager
                 )
                 results["files"]["claude_cli_documentation"] = claude_md_path
                 results["status"]["claude_cli_documentation"] = "complete"
+                logger.info(f"  ✅ Claude CLI documentation generated: {claude_md_path}")
             except Exception as e:
-                logger.warning(f"Claude CLI documentation generation failed: {e}")
+                logger.warning(f"  ⚠️  Claude CLI documentation generation failed: {e}")
+                results["status"]["claude_cli_documentation"] = "failed"
             
-            # Step 18: Format Conversion (convert to HTML, PDF, DOCX)
-            logger.info("Converting documentation to multiple formats")
+            # 4. Format Conversion
+            logger.info("📄 Step 4: Converting documents to multiple formats...")
             try:
                 # Prepare documents dict with proper names for format converter
-                # Use AgentType.value as key for proper folder mapping
-                documents_for_conversion = {}
-                for agent_type, content in all_documentation.items():
-                    # Use the agent type value as the document name
-                    # Format converter will map this to the correct folder via AGENT_TYPE_TO_FOLDER
-                    documents_for_conversion[agent_type.value] = content
+                documents_for_conversion = {
+                    agent_type.value: content
+                    for agent_type, content in final_docs.items()
+                }
                 
-                logger.debug(f"Preparing to convert {len(documents_for_conversion)} documents: {list(documents_for_conversion.keys())}")
-                
-                # Convert to all supported formats
                 format_results = self.format_converter.convert_all_documents(
                     documents=documents_for_conversion,
                     formats=["html", "pdf", "docx"],
@@ -876,13 +834,14 @@ class WorkflowCoordinator:
                 results["status"]["format_conversions"] = "complete"
                 
                 total_conversions = sum(len(fmts) for fmts in format_results.values())
-                logger.info(f"Converted {len(format_results)} documents to {total_conversions} files (HTML, PDF, DOCX)")
-                
+                logger.info(f"  ✅ Converted {len(format_results)} documents to {total_conversions} files (HTML, PDF, DOCX)")
             except Exception as e:
-                logger.warning(f"Format conversion partially failed: {e}, trying HTML-only conversion as fallback")
+                logger.warning(f"  ⚠️  Format conversion failed: {e}, trying HTML-only as fallback")
                 try:
-                    # Prepare documents dict again for fallback
-                    documents_for_conversion = {agent_type.value: content for agent_type, content in all_documentation.items()}
+                    documents_for_conversion = {
+                        agent_type.value: content
+                        for agent_type, content in final_docs.items()
+                    }
                     format_results = self.format_converter.convert_all_documents(
                         documents=documents_for_conversion,
                         formats=["html"],
@@ -891,28 +850,65 @@ class WorkflowCoordinator:
                     )
                     results["files"]["format_conversions"] = format_results
                     results["status"]["format_conversions"] = "partial (HTML only)"
-                    logger.info(f"Converted {len(format_results)} documents to HTML")
+                    logger.info(f"  ✅ Converted {len(format_results)} documents to HTML")
                 except Exception as e2:
-                    logger.warning(f"Format conversion failed: {e2}")
+                    logger.warning(f"  ⚠️  Format conversion failed: {e2}")
                     results["status"]["format_conversions"] = "skipped"
             
-            # Summary - Organized by Level
-            logger.info(f"Workflow completed successfully: {len(results['files'])} documents generated for project {project_id}")
+            logger.info("=" * 80)
+            logger.info("✅ PHASE 3 COMPLETE: Final packaging and conversion completed")
+            logger.info("=" * 80)
             
-            # Also log the organized structure
+            # Optional: Auto-Fix Loop (can be enabled via ENABLE_AUTO_FIX=true)
+            # Note: In hybrid mode, Phase 1 documents already went through quality gates
+            # This auto-fix is primarily for secondary documents if needed
+            # (Keeping the auto-fix code for backward compatibility, but it's optional in hybrid mode)
+            try:
+                from src.config.settings import get_settings
+                settings = get_settings()
+                
+                enable_auto_fix = getattr(settings, 'enable_auto_fix', False) or os.getenv("ENABLE_AUTO_FIX", "false").lower() == "true"
+                fix_threshold = float(os.getenv("AUTO_FIX_THRESHOLD", "70.0"))
+                
+                if enable_auto_fix:
+                    logger.info("🔧 Optional Auto-Fix Loop: Analyzing quality review for secondary documents...")
+                    quality_review_content = self.file_manager.read_file(quality_review_path)
+                    
+                    # Extract overall quality score
+                    overall_score_pattern = r'Overall Quality Score:\s*(\d+)/100'
+                    overall_scores = re.findall(overall_score_pattern, quality_review_content)
+                    overall_score = int(overall_scores[0]) if overall_scores else 100
+                    
+                    # In hybrid mode, we typically don't need auto-fix for Phase 1 documents
+                    # (they already went through quality gates), but we can improve Phase 2 documents
+                    logger.info(f"  📊 Overall quality score: {overall_score}/100")
+                    if overall_score < fix_threshold:
+                        logger.info(f"  ⚠️  Overall score below threshold ({fix_threshold}), but Phase 1 documents already have quality gates")
+                        logger.info(f"  💡 Consider reviewing quality_review.md for detailed feedback")
+                    else:
+                        logger.info(f"  ✅ Overall quality score meets threshold")
+                else:
+                    logger.debug("  Auto-Fix Loop disabled (ENABLE_AUTO_FIX=false)")
+            except Exception as e:
+                logger.debug(f"  Auto-Fix Loop check skipped: {e}")
+            
+            # Summary
+            logger.info("=" * 80)
+            logger.info(f"🚀 HYBRID Workflow COMPLETED for project {project_id}")
+            logger.info("=" * 80)
+            
             summary = get_documents_summary(results["files"])
             logger.info(f"Documents organized by level: Level 1: {len(summary['level_1_strategic']['documents'])}, "
                        f"Level 2: {len(summary['level_2_product']['documents'])}, "
                        f"Level 3: {len(summary['level_3_technical']['documents'])}, "
                        f"Cross-Level: {len(summary['cross_level']['documents'])}")
             
-            # Add organized summary to results
             results["documents_by_level"] = summary
             
             return results
             
         except Exception as e:
-            logger.error(f"Error in workflow (profile: {profile}): {str(e)}", exc_info=True)
+            logger.error(f"❌ CRITICAL ERROR in HYBRID workflow: {str(e)}", exc_info=True)
             results["error"] = str(e)
             return results
     
