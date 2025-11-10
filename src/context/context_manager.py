@@ -96,6 +96,24 @@ class ContextManager:
             )
         """)
         
+        # Project status table for workflow state management
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS project_status (
+                project_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                user_idea TEXT NOT NULL,
+                profile TEXT,
+                provider_name TEXT,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                failed_at TEXT,
+                error TEXT,
+                completed_agents TEXT,  -- JSON array
+                results TEXT,  -- JSON object (serialized results)
+                FOREIGN KEY (project_id) REFERENCES projects(project_id)
+            )
+        """)
+        
         self.connection.commit()
     
     def create_project(self, project_id: str, user_idea: str) -> str:
@@ -308,6 +326,127 @@ class ContextManager:
             created_at=datetime.fromisoformat(project_row["created_at"]),
             updated_at=datetime.fromisoformat(project_row["updated_at"])
         )
+    
+    def update_project_status(
+        self,
+        project_id: str,
+        status: str,
+        user_idea: Optional[str] = None,
+        profile: Optional[str] = None,
+        provider_name: Optional[str] = None,
+        completed_agents: Optional[List[str]] = None,
+        results: Optional[Dict] = None,
+        error: Optional[str] = None
+    ):
+        """
+        Update project workflow status in database
+        
+        Args:
+            project_id: Project identifier
+            status: Workflow status ("in_progress", "complete", "failed")
+            user_idea: User idea (required for initial status creation)
+            profile: Project profile ("team" or "individual")
+            provider_name: LLM provider name
+            completed_agents: List of completed agent names
+            results: Generation results dictionary
+            error: Error message (if status is "failed")
+        """
+        cursor = self.connection.cursor()
+        now = datetime.now().isoformat()
+        
+        # Check if status record exists
+        cursor.execute("SELECT status, started_at FROM project_status WHERE project_id = ?", (project_id,))
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Update existing status
+            update_fields = ["status = ?"]
+            update_values = [status]
+            
+            if completed_agents is not None:
+                update_fields.append("completed_agents = ?")
+                update_values.append(json.dumps(completed_agents))
+            
+            if results is not None:
+                update_fields.append("results = ?")
+                update_values.append(json.dumps(results))
+            
+            if error is not None:
+                update_fields.append("error = ?")
+                update_fields.append("failed_at = ?")
+                update_values.append(error)
+                update_values.append(now)
+            elif status == "complete":
+                update_fields.append("completed_at = ?")
+                update_values.append(now)
+            
+            update_values.append(project_id)
+            cursor.execute(f"""
+                UPDATE project_status 
+                SET {', '.join(update_fields)}
+                WHERE project_id = ?
+            """, update_values)
+            
+            # Also update projects table updated_at
+            cursor.execute("""
+                UPDATE projects 
+                SET updated_at = ?
+                WHERE project_id = ?
+            """, (now, project_id))
+        else:
+            # Create new status record
+            if not user_idea:
+                raise ValueError("user_idea is required when creating new project status")
+            
+            cursor.execute("""
+                INSERT INTO project_status (
+                    project_id, status, user_idea, profile, provider_name,
+                    started_at, completed_agents, results, error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                project_id,
+                status,
+                user_idea,
+                profile,
+                provider_name or "default",
+                now,
+                json.dumps(completed_agents or []),
+                json.dumps(results or {}),
+                error
+            ))
+        
+        self.connection.commit()
+    
+    def get_project_status(self, project_id: str) -> Optional[Dict]:
+        """
+        Get project workflow status from database
+        
+        Args:
+            project_id: Project identifier
+            
+        Returns:
+            Status dictionary or None if not found
+        """
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT * FROM project_status WHERE project_id = ?", (project_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            return None
+        
+        return {
+            "project_id": row["project_id"],
+            "status": row["status"],
+            "user_idea": row["user_idea"],
+            "profile": row["profile"],
+            "provider_name": row["provider_name"],
+            "started_at": row["started_at"],
+            "completed_at": row["completed_at"],
+            "failed_at": row["failed_at"],
+            "error": row["error"],
+            "completed_agents": json.loads(row["completed_agents"] or "[]"),
+            "results": json.loads(row["results"] or "{}") if row["results"] else {}
+        }
     
     def close(self):
         """Close database connection"""

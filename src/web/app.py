@@ -21,7 +21,8 @@ from src.utils.document_organizer import get_documents_summary
 # Global coordinator and context manager
 coordinator: Optional[WorkflowCoordinator] = None
 context_manager: Optional[ContextManager] = None
-project_status: Dict[str, Dict] = {}
+# Note: project_status is now stored in database via ContextManager
+# Removed in-memory dictionary for stateless web app support
 
 
 @asynccontextmanager
@@ -483,6 +484,17 @@ async def generate_docs(request: GenerationRequest, background_tasks: Background
     try:
         project_id = request.project_id or f"project_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
         
+        # Create project in database and set initial status
+        context_manager.create_project(project_id, request.user_idea)
+        context_manager.update_project_status(
+            project_id=project_id,
+            status="in_progress",
+            user_idea=request.user_idea,
+            profile=request.profile or "team",
+            provider_name=request.provider_name or "default",
+            completed_agents=[]
+        )
+        
         # Start generation in background
         background_tasks.add_task(
             run_generation,
@@ -491,15 +503,6 @@ async def generate_docs(request: GenerationRequest, background_tasks: Background
             request.profile,
             request.provider_name
         )
-        
-        project_status[project_id] = {
-            "status": "in_progress",
-            "user_idea": request.user_idea,
-            "profile": request.profile,
-            "provider_name": request.provider_name or "default",
-            "started_at": datetime.now().isoformat(),
-            "completed_agents": []
-        }
         
         return GenerationResponse(
             project_id=project_id,
@@ -511,12 +514,15 @@ async def generate_docs(request: GenerationRequest, background_tasks: Background
 
 
 def run_generation(user_idea: str, project_id: str, profile: str = "team", provider_name: Optional[str] = None):
-    """Run documentation generation in background"""
+    """Run documentation generation in background and update status in database"""
+    # Use the global context_manager to ensure state is persisted
+    # This allows status to survive server restarts
+    local_context_manager = context_manager if context_manager else ContextManager()
+    
     try:
         # Create a new coordinator with the specified provider (or use global one if provider_name is None)
         if provider_name:
-            # Create coordinator with specific provider
-            local_context_manager = ContextManager()
+            # Create coordinator with specific provider, but use shared context_manager for status
             local_coordinator = WorkflowCoordinator(
                 context_manager=local_context_manager,
                 provider_name=provider_name
@@ -524,32 +530,37 @@ def run_generation(user_idea: str, project_id: str, profile: str = "team", provi
             results = local_coordinator.generate_all_docs(user_idea, project_id, profile)
         else:
             # Use global coordinator (uses env var or default)
-            results = coordinator.generate_all_docs(user_idea, project_id, profile)
+            # Ensure it uses the same context_manager for status persistence
+            if coordinator:
+                results = coordinator.generate_all_docs(user_idea, project_id, profile)
+            else:
+                local_coordinator = WorkflowCoordinator(context_manager=local_context_manager)
+                results = local_coordinator.generate_all_docs(user_idea, project_id, profile)
         
-        project_status[project_id] = {
-            "status": "complete",
-            "user_idea": user_idea,
-            "started_at": project_status[project_id]["started_at"],
-            "completed_at": datetime.now().isoformat(),
-            "results": results,
-            "completed_agents": list(results.get("files", {}).keys())
-        }
+        # Update status in database
+        local_context_manager.update_project_status(
+            project_id=project_id,
+            status="complete",
+            completed_agents=list(results.get("files", {}).keys()),
+            results=results
+        )
     except Exception as e:
-        project_status[project_id] = {
-            "status": "failed",
-            "error": str(e),
-            "started_at": project_status[project_id]["started_at"],
-            "failed_at": datetime.now().isoformat()
-        }
+        # Update status to failed in database
+        local_context_manager.update_project_status(
+            project_id=project_id,
+            status="failed",
+            error=str(e)
+        )
 
 
 @app.get("/api/status/{project_id}")
 async def get_status(project_id: str):
-    """Get generation status"""
-    if project_id not in project_status:
+    """Get generation status from database"""
+    status = context_manager.get_project_status(project_id)
+    
+    if not status:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    status = project_status[project_id]
     return {
         "project_id": project_id,
         "status": status["status"],
@@ -560,11 +571,12 @@ async def get_status(project_id: str):
 
 @app.get("/api/results/{project_id}")
 async def get_results(project_id: str):
-    """Get generation results with documents organized by level"""
-    if project_id not in project_status:
+    """Get generation results with documents organized by level from database"""
+    status = context_manager.get_project_status(project_id)
+    
+    if not status:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    status = project_status[project_id]
     if status["status"] != "complete":
         raise HTTPException(status_code=400, detail="Generation not complete")
     
@@ -579,11 +591,12 @@ async def get_results(project_id: str):
 
 @app.get("/api/download/{project_id}/{doc_type}")
 async def download_document(project_id: str, doc_type: str):
-    """Download a generated document"""
-    if project_id not in project_status:
+    """Download a generated document from database"""
+    status = context_manager.get_project_status(project_id)
+    
+    if not status:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    status = project_status[project_id]
     if status["status"] != "complete":
         raise HTTPException(status_code=400, detail="Generation not complete")
     
