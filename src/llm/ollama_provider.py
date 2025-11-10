@@ -4,9 +4,10 @@ Implements BaseLLMProvider for local Ollama API
 Supports both sync and async operations
 """
 import os
+import time
 from typing import Optional
 import requests
-from requests.exceptions import ConnectionError, RequestException, Timeout
+from requests.exceptions import ConnectionError, RequestException
 import aiohttp
 import asyncio
 from src.llm.base_provider import BaseLLMProvider
@@ -225,7 +226,7 @@ class OllamaProvider(BaseLLMProvider):
                             error_details = error_response["error"]
                         elif "message" in error_response:
                             error_details = error_response["message"]
-                    except:
+                    except Exception:
                         error_details = response.text[:200] if response.text else None
                     
                     # Handle 500/503 errors with retry
@@ -386,8 +387,6 @@ class OllamaProvider(BaseLLMProvider):
         Returns:
             Generated text
         """
-        import time as time_module
-        
         model_name = model or self.default_model_name
         
         # Prepare request payload (same as sync version)
@@ -456,7 +455,7 @@ class OllamaProvider(BaseLLMProvider):
                                 error_details = error_response["error"]
                             elif "message" in error_response:
                                 error_details = error_response["message"]
-                        except:
+                        except Exception:
                             error_details = error_text[:200] if error_text else None
                         
                         # Handle 500/503 errors with retry
