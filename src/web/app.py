@@ -879,8 +879,17 @@ async def get_results(project_id: str):
     files = results.get("files", {})
     
     # Get documents organized by level
-    if "documents_by_level" not in results and files:
-        results["documents_by_level"] = get_documents_summary(files)
+    # Always regenerate from files to ensure correct format (handles data migration)
+    if files:
+        try:
+            # Validate that files is a dict of str -> str
+            if isinstance(files, dict) and all(isinstance(v, str) for v in files.values()):
+                results["documents_by_level"] = get_documents_summary(files)
+            else:
+                logger.warning(f"Invalid files format in results for project {project_id}, skipping documents_by_level generation")
+        except Exception as e:
+            logger.error(f"Error generating documents_by_level for project {project_id}: {e}")
+            # Continue without documents_by_level rather than failing
     
     # Enhance documents with metadata (file size, modification time, etc.)
     if "documents_by_level" in results:
@@ -893,30 +902,67 @@ async def get_results(project_id: str):
                 documents = results["documents_by_level"][level_key].get("documents", [])
                 for doc in documents:
                     file_path = doc.get("file_path")
-                    if file_path and Path(file_path).exists():
-                        try:
+                    
+                    # Handle case where file_path might be a dict (from old data format)
+                    if isinstance(file_path, dict):
+                        # Try to extract path from dict
+                        file_path = file_path.get("path") or file_path.get("file_path") or file_path.get("value")
+                        if not file_path or not isinstance(file_path, str):
+                            logger.warning(f"Invalid file_path format in document {doc.get('type', 'unknown')}: {file_path}")
+                            continue
+                    
+                    # Skip if file_path is not a string
+                    if not isinstance(file_path, str):
+                        logger.warning(f"file_path is not a string for document {doc.get('type', 'unknown')}: {type(file_path)}")
+                        continue
+                    
+                    # Skip if file_path is empty
+                    if not file_path:
+                        continue
+                    
+                    try:
+                        path_obj = Path(file_path)
+                        if path_obj.exists():
                             # Get file size
-                            file_size = Path(file_path).stat().st_size
+                            file_size = path_obj.stat().st_size
                             doc["file_size"] = file_size
                             doc["file_size_human"] = _format_file_size(file_size)
                             
                             # Get modification time
-                            mtime = Path(file_path).stat().st_mtime
+                            mtime = path_obj.stat().st_mtime
                             doc["modified_at"] = datetime.fromtimestamp(mtime).isoformat()
                             
                             # Get file extension
-                            doc["file_extension"] = Path(file_path).suffix.lower()
-                        except Exception as e:
-                            logger.warning(f"Could not get metadata for {file_path}: {e}")
+                            doc["file_extension"] = path_obj.suffix.lower()
+                    except (TypeError, OSError, ValueError) as e:
+                        logger.warning(f"Could not get metadata for {file_path}: {e}")
     
     # Add summary statistics
+    total_size = 0
+    if files:
+        for path in files.values():
+            # Handle case where path might not be a string
+            if isinstance(path, str):
+                try:
+                    path_obj = Path(path)
+                    if path_obj.exists():
+                        total_size += path_obj.stat().st_size
+                except (TypeError, OSError, ValueError) as e:
+                    logger.debug(f"Could not get size for {path}: {e}")
+            elif isinstance(path, dict):
+                # Try to extract path from dict
+                path_str = path.get("path") or path.get("file_path") or path.get("value")
+                if path_str and isinstance(path_str, str):
+                    try:
+                        path_obj = Path(path_str)
+                        if path_obj.exists():
+                            total_size += path_obj.stat().st_size
+                    except (TypeError, OSError, ValueError) as e:
+                        logger.debug(f"Could not get size for {path_str}: {e}")
+    
     results["summary"] = {
         "total_documents": len(files),
-        "total_size": sum(
-            Path(path).stat().st_size 
-            for path in files.values() 
-            if Path(path).exists()
-        ) if files else 0,
+        "total_size": total_size,
         "generated_at": status.get("updated_at"),
         "profile": status.get("profile", "team")
     }
