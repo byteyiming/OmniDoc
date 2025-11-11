@@ -111,9 +111,19 @@ uv run python -m src.web.app
 
 - **Ollama Provider** (Local Development):
   - **Usage**: Set `LLM_PROVIDER=ollama` in `.env` file
-  - **Benefits**: Fast, local, no API costs
+  - **Benefits**: Fast, local, no API costs, privacy
   - **Models**: Any Ollama model (e.g., `dolphin3`, `llama3`, `mistral`)
-  - **Configuration**: Set `OLLAMA_BASE_URL` if using remote Ollama instance
+  - **Configuration**: 
+    - `OLLAMA_BASE_URL`: Ollama API base URL (default: `http://localhost:11434`)
+    - `OLLAMA_MODEL`: Model name (default: `dolphin3`)
+    - `OLLAMA_MAX_TOKENS`: **CRITICAL** - Maximum tokens for completion (default: `8192`)
+      - Many local models have very low default max_tokens (e.g., 512), causing incomplete outputs
+      - Set to `8192` (8K) for small models, `16384` (16K) for medium models, `32768` (32K) for large models
+    - `OLLAMA_TIMEOUT`: Base timeout in seconds (default: `600` = 10 minutes)
+      - **NOTE**: This is a *default* timeout. The actual timeout is dynamically calculated based on `OLLAMA_MAX_TOKENS`
+      - Dynamic timeout calculation: base timeout + estimated generation time (based on max_tokens)
+      - Maximum timeout: `1800` seconds (30 minutes) for very long outputs
+      - The timeout automatically increases with `OLLAMA_MAX_TOKENS` to ensure complete document generation
 
 - **OpenAI Provider**:
   - **Usage**: Set `LLM_PROVIDER=openai` in `.env` file
@@ -202,8 +212,22 @@ GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_DEFAULT_MODEL=gemini-2.0-flash  # Optional: default is gemini-2.0-flash
 
 # Ollama configuration (if LLM_PROVIDER=ollama)
-OLLAMA_BASE_URL=http://localhost:11434  # Optional
-OLLAMA_MODEL=dolphin3  # Optional
+OLLAMA_BASE_URL=http://localhost:11434  # Optional, defaults to localhost:11434
+OLLAMA_MODEL=dolphin3  # Optional, defaults to dolphin3
+
+# Ollama maximum tokens (CRITICAL for local models)
+# Many local models have very low default max_tokens (e.g., 512), which can cause incomplete outputs.
+# Set this to a higher value (e.g., 8192, 16384) to ensure complete document generation.
+# The timeout will automatically adjust based on this value (up to 30 minutes for large outputs).
+OLLAMA_MAX_TOKENS=8192  # Default: 8192 (8K tokens) - recommended for small models
+# OLLAMA_MAX_TOKENS=16384  # For medium models (16K tokens)
+# OLLAMA_MAX_TOKENS=32768  # For large models (32K tokens)
+
+# Ollama request timeout (base timeout in seconds)
+# NOTE: This is a DEFAULT timeout. The actual timeout is dynamically calculated
+# based on OLLAMA_MAX_TOKENS and can be up to 30 minutes for large outputs.
+# Dynamic timeout = max(base_timeout, estimated_generation_time), capped at 1800s (30 minutes)
+OLLAMA_TIMEOUT=600  # Default: 600 seconds (10 minutes) - increases automatically based on max_tokens
 
 # OpenAI configuration (if LLM_PROVIDER=openai)
 OPENAI_API_KEY=your_openai_api_key_here

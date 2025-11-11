@@ -718,18 +718,41 @@ class FormatConverterAgent(BaseAgent):
         context_manager: Optional[ContextManager] = None
     ) -> dict:
         """
-        Convert all documents to multiple formats
+        Convert all documents to multiple formats with detailed status reporting
         
         Each document is saved in its own subdirectory: docs/{doc_name}/
         
         Args:
             documents: Dict mapping document names to markdown content
-            formats: List of target formats (e.g., ['html', 'pdf'])
+            formats: List of target formats (e.g., ['html', 'pdf', 'docx'])
             project_id: Optional project ID for context
             context_manager: Optional context manager
         
         Returns:
-            Dict mapping document names to converted file paths
+            Dict mapping document names to conversion results with detailed status:
+            {
+                "doc_name": {
+                    "html": {
+                        "status": "success",
+                        "file_path": "docs/api/api_documentation.html"
+                    },
+                    "pdf": {
+                        "status": "failed_dependency_error",
+                        "error": "PDF conversion unavailable: System libraries not available",
+                        "file_path": None
+                    },
+                    "docx": {
+                        "status": "success",
+                        "file_path": "docs/api/api_documentation.docx"
+                    }
+                }
+            }
+            
+            Status values:
+            - "success": Conversion successful
+            - "failed_dependency_error": Missing system dependencies (e.g., WeasyPrint libraries)
+            - "failed_import_error": Missing Python package (e.g., python-docx)
+            - "failed_unknown_error": Other errors
         """
         results = {}
         
@@ -781,12 +804,41 @@ class FormatConverterAgent(BaseAgent):
                         subdirectory=subdirectory
                     )
                     
-                    doc_results[fmt] = file_path
+                    doc_results[fmt] = {
+                        "status": "success",
+                        "file_path": file_path
+                    }
                     logger.info(f"Successfully converted {doc_name} to {fmt} → {subdirectory}/{output_filename}")
                     
+                except ImportError as e:
+                    # Missing Python package or system library
+                    error_msg = str(e)
+                    if "weasyprint" in error_msg.lower() or "system libraries" in error_msg.lower() or "libgobject" in error_msg.lower():
+                        status = "failed_dependency_error"
+                        error_detail = "PDF conversion requires system libraries (WeasyPrint dependencies). HTML and DOCX formats are still available."
+                    elif "python-docx" in error_msg.lower():
+                        status = "failed_import_error"
+                        error_detail = f"DOCX conversion requires 'python-docx' package. Install with: pip install python-docx"
+                    else:
+                        status = "failed_import_error"
+                        error_detail = f"Missing dependency: {error_msg}"
+                    
+                    doc_results[fmt] = {
+                        "status": status,
+                        "error": error_detail,
+                        "file_path": None
+                    }
+                    logger.warning(f"Format conversion failed for {doc_name} to {fmt}: {error_detail}")
+                    
                 except Exception as e:
-                    logger.error(f"Error converting {doc_name} to {fmt}: {str(e)}", exc_info=True)
-                    doc_results[fmt] = None
+                    # Other errors
+                    error_msg = str(e)
+                    doc_results[fmt] = {
+                        "status": "failed_unknown_error",
+                        "error": error_msg,
+                        "file_path": None
+                    }
+                    logger.error(f"Error converting {doc_name} to {fmt}: {error_msg}", exc_info=True)
             
             results[doc_name] = doc_results
         

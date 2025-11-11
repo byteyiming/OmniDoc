@@ -1301,29 +1301,56 @@ Improvement Suggestions:
                     context_manager=self.context_manager
                 )
                 results["files"]["format_conversions"] = format_results
-                results["status"]["format_conversions"] = "complete"
                 
-                total_conversions = sum(len(fmts) for fmts in format_results.values())
-                logger.info(f"  ✅ Converted {len(format_results)} documents to {total_conversions} files (HTML, PDF, DOCX)")
+                # Analyze conversion results to determine overall status
+                total_docs = len(format_results)
+                successful_formats = {}
+                failed_formats = {}
+                
+                for doc_name, doc_results in format_results.items():
+                    for fmt, fmt_result in doc_results.items():
+                        if isinstance(fmt_result, dict) and fmt_result.get("status") == "success":
+                            successful_formats[fmt] = successful_formats.get(fmt, 0) + 1
+                        else:
+                            failed_formats[fmt] = failed_formats.get(fmt, 0) + 1
+                
+                # Count successful conversions
+                total_successful = sum(successful_formats.values())
+                total_attempted = total_docs * 3  # 3 formats per document
+                
+                if total_successful == total_attempted:
+                    results["status"]["format_conversions"] = "complete"
+                    logger.info(f"  ✅ Converted {total_docs} documents to {total_successful} files (HTML, PDF, DOCX)")
+                elif total_successful > 0:
+                    results["status"]["format_conversions"] = f"partial ({total_successful}/{total_attempted} successful)"
+                    logger.info(f"  ⚠️  Format conversion partial: {total_successful}/{total_attempted} successful")
+                    # Log failed formats for debugging
+                    for fmt, count in failed_formats.items():
+                        logger.warning(f"    - {fmt.upper()}: {count} failures")
+                else:
+                    results["status"]["format_conversions"] = "failed"
+                    logger.warning(f"  ❌ Format conversion failed: all {total_attempted} conversions failed")
+                
+                # Store conversion status details for frontend
+                results["format_conversion_status"] = {
+                    "successful": successful_formats,
+                    "failed": failed_formats,
+                    "total_docs": total_docs,
+                    "total_successful": total_successful,
+                    "total_attempted": total_attempted
+                }
+                
             except Exception as e:
-                logger.warning(f"  ⚠️  Format conversion failed: {e}, trying HTML-only as fallback")
-                try:
-                    documents_for_conversion = {
-                        agent_type.value: content
-                        for agent_type, content in final_docs.items()
-                    }
-                    format_results = self.format_converter.convert_all_documents(
-                        documents=documents_for_conversion,
-                        formats=["html"],
-                        project_id=project_id,
-                        context_manager=self.context_manager
-                    )
-                    results["files"]["format_conversions"] = format_results
-                    results["status"]["format_conversions"] = "partial (HTML only)"
-                    logger.info(f"  ✅ Converted {len(format_results)} documents to HTML")
-                except Exception as e2:
-                    logger.warning(f"  ⚠️  Format conversion failed: {e2}")
-                    results["status"]["format_conversions"] = "skipped"
+                logger.error(f"  ❌ Format conversion failed with exception: {e}", exc_info=True)
+                results["status"]["format_conversions"] = "failed"
+                results["format_conversion_status"] = {
+                    "error": str(e),
+                    "successful": {},
+                    "failed": {},
+                    "total_docs": 0,
+                    "total_successful": 0,
+                    "total_attempted": 0
+                }
             
             logger.info("=" * 80)
             logger.info("✅ PHASE 3 COMPLETE: Final packaging and conversion completed")
