@@ -43,13 +43,59 @@ from src.utils.async_parallel_executor import AsyncParallelExecutor, TaskStatus 
 from src.rate_limit.queue_manager import RequestQueue
 from src.utils.document_organizer import format_documents_by_level, get_documents_summary, get_document_level, get_document_display_name
 from src.coordination.workflow_dag import (
+    get_phase1_tasks_for_profile,
     get_phase2_tasks_for_profile,
+    build_phase1_task_dependencies,
     build_task_dependencies,
+    build_kwargs_for_phase1_task,
     build_kwargs_for_task,
+    get_agent_for_phase1_task,
     get_agent_for_task,
+    Phase1Task,
     Phase2Task
 )
+
 import asyncio
+
+# Mapping from AgentType to folder name for file organization
+AGENT_TYPE_TO_FOLDER = {
+    AgentType.REQUIREMENTS_ANALYST: "requirements",
+    AgentType.PROJECT_CHARTER: "charter",
+    AgentType.USER_STORIES: "user_stories",
+    AgentType.TECHNICAL_DOCUMENTATION: "technical",
+    AgentType.DATABASE_SCHEMA: "database",
+    AgentType.API_DOCUMENTATION: "api",
+    AgentType.SETUP_GUIDE: "setup",
+    AgentType.DEVELOPER_DOCUMENTATION: "developer",
+    AgentType.TEST_DOCUMENTATION: "test",
+    AgentType.USER_DOCUMENTATION: "user",
+    AgentType.LEGAL_COMPLIANCE: "legal",
+    AgentType.SUPPORT_PLAYBOOK: "support",
+    AgentType.PM_DOCUMENTATION: "pm",
+    AgentType.STAKEHOLDER_COMMUNICATION: "stakeholder",
+    AgentType.BUSINESS_MODEL: "business",
+    AgentType.MARKETING_PLAN: "marketing",
+    AgentType.QUALITY_REVIEWER: "quality",
+}
+
+
+def get_output_filename_for_agent(agent_type: AgentType, filename: str) -> str:
+    """
+    Get the output filename with folder prefix based on agent type.
+    
+    Args:
+        agent_type: AgentType enum value
+        filename: Base filename (e.g., "requirements.md")
+    
+    Returns:
+        Filename with folder prefix (e.g., "requirements/requirements.md")
+    """
+    folder = AGENT_TYPE_TO_FOLDER.get(agent_type)
+    if folder:
+        # Extract just the filename if path is provided
+        filename_only = Path(filename).name
+        return f"{folder}/{filename_only}"
+    return filename
 
 
 class WorkflowCoordinator:
@@ -256,12 +302,17 @@ class WorkflowCoordinator:
         # 1. GENERATE V1
         logger.info(f"  📝 Step 1: Generating V1 for {agent_type.value}...")
         try:
-            v1_file_path = agent_instance.generate_and_save(
-                **generate_kwargs,
-                output_filename=output_filename,
-                project_id=project_id,
-                context_manager=self.context_manager
-            )
+            # generate_kwargs should already contain output_filename, project_id, context_manager
+            # Only pass them explicitly if not in generate_kwargs (for backward compatibility)
+            call_kwargs = generate_kwargs.copy()
+            if "output_filename" not in call_kwargs:
+                call_kwargs["output_filename"] = output_filename
+            if "project_id" not in call_kwargs:
+                call_kwargs["project_id"] = project_id
+            if "context_manager" not in call_kwargs:
+                call_kwargs["context_manager"] = self.context_manager
+            
+            v1_file_path = agent_instance.generate_and_save(**call_kwargs)
             v1_content = self.file_manager.read_file(v1_file_path)
             logger.info(f"  ✅ V1 generated: {len(v1_content)} characters")
         except Exception as e:
@@ -404,8 +455,8 @@ Improvement Suggestions:
         agent_instance,
         agent_type: AgentType,
         generate_kwargs: dict,
-        output_filename: str,
-        project_id: str,
+        output_filename: Optional[str] = None,
+        project_id: Optional[str] = None,
         quality_threshold: float = 80.0
     ) -> tuple:
         """
@@ -416,8 +467,9 @@ Improvement Suggestions:
             agent_instance: Agent instance to run
             agent_type: AgentType enum value
             generate_kwargs: Keyword arguments to pass to agent.generate_and_save()
-            output_filename: Output filename
-            project_id: Project ID
+                (should already contain output_filename, project_id, context_manager)
+            output_filename: Output filename (optional, extracted from generate_kwargs if not provided)
+            project_id: Project ID (optional, extracted from generate_kwargs if not provided)
             quality_threshold: Quality score threshold (default: 80.0)
         
         Returns:
@@ -425,36 +477,25 @@ Improvement Suggestions:
         """
         logger.info(f"🔍 Running Quality Loop (async) for {agent_type.value}...")
         
+        # Extract output_filename and project_id from generate_kwargs if not provided explicitly
+        # generate_kwargs already contains these, so we extract them for later use
+        if output_filename is None:
+            output_filename = generate_kwargs.get("output_filename")
+        if project_id is None:
+            project_id = generate_kwargs.get("project_id")
+        if project_id is None:
+            raise ValueError("project_id must be provided either as parameter or in generate_kwargs")
+        
         # 1. GENERATE V1 (async)
         logger.info(f"  📝 Step 1: Generating V1 (async) for {agent_type.value}...")
         try:
-            # Use async_generate if available, otherwise run sync in executor
-            if hasattr(agent_instance, 'async_generate'):
-                # Try to use async version
-                # For generate_and_save, we need to handle file I/O separately
-                # For now, run sync version in executor
-                loop = asyncio.get_event_loop()
-                v1_file_path = await loop.run_in_executor(
-                    None,
-                    lambda: agent_instance.generate_and_save(
-                        **generate_kwargs,
-                        output_filename=output_filename,
-                        project_id=project_id,
-                        context_manager=self.context_manager
-                    )
-                )
-            else:
-                # Fallback to sync in executor
-                loop = asyncio.get_event_loop()
-                v1_file_path = await loop.run_in_executor(
-                    None,
-                    lambda: agent_instance.generate_and_save(
-                        **generate_kwargs,
-                        output_filename=output_filename,
-                        project_id=project_id,
-                        context_manager=self.context_manager
-                    )
-                )
+            # generate_kwargs already contains output_filename, project_id, context_manager
+            # Don't pass them again to avoid "multiple values" error
+            loop = asyncio.get_event_loop()
+            v1_file_path = await loop.run_in_executor(
+                None,
+                lambda: agent_instance.generate_and_save(**generate_kwargs)
+            )
             
             # Read file (can be async in future, but FileManager is sync for now)
             v1_content = await asyncio.get_event_loop().run_in_executor(
@@ -623,7 +664,7 @@ Improvement Suggestions:
         """Helper for parallel technical doc generation"""
         return self.technical_agent.generate_and_save(
             requirements_summary=req_summary,
-            output_filename="technical_spec.md",
+            output_filename=get_output_filename_for_agent(AgentType.TECHNICAL_DOCUMENTATION, "technical_spec.md"),
             project_id=project_id,
             context_manager=self.context_manager
         )
@@ -693,24 +734,168 @@ Improvement Suggestions:
         document_file_paths = {}
         
         try:
-            # --- PHASE 1: FOUNDATIONAL DOCUMENTS (Iterative Quality Loop) ---
+            # --- PHASE 1: FOUNDATIONAL DOCUMENTS (DAG with Quality Gate) ---
             logger.info("=" * 80)
-            logger.info("--- PHASE 1: Generating Foundational Documents (Quality Gate) ---")
+            logger.info("--- PHASE 1: Generating Foundational Documents (DAG with Quality Gate) ---")
             logger.info("=" * 80)
             
-            # 1. REQUIREMENTS (with quality gate)
-            req_path, req_content = self._run_agent_with_quality_loop(
-                agent_instance=self.requirements_analyst,
-                agent_type=AgentType.REQUIREMENTS_ANALYST,
-                generate_kwargs={"user_idea": user_idea},
-                output_filename="requirements/requirements.md",
-                project_id=project_id,
-                quality_threshold=80.0
-            )
-            results["files"]["requirements"] = req_path
-            results["status"]["requirements"] = "complete_v2"
-            final_docs[AgentType.REQUIREMENTS_ANALYST] = req_content
-            document_file_paths[AgentType.REQUIREMENTS_ANALYST] = req_path
+            # Get Phase 1 task configurations from DAG
+            phase1_tasks = get_phase1_tasks_for_profile(profile=profile)
+            logger.info(f"📋 Phase 1 DAG: {len(phase1_tasks)} tasks for profile '{profile}'")
+            
+            # Build dependency map
+            phase1_dependency_map = build_phase1_task_dependencies(phase1_tasks)
+            
+            # Create async executor for Phase 1
+            executor = AsyncParallelExecutor(max_workers=4)  # Smaller pool for Phase 1
+            
+            # Create async task execution coroutines for each Phase 1 task
+            def create_phase1_task_coro(task: Phase1Task):
+                """Create an async task coroutine that executes Phase 1 task with quality gate"""
+                async def execute_phase1_task():
+                    # Get dependencies from context (AsyncParallelExecutor ensures dependencies are completed first)
+                    deps_content: Dict[AgentType, str] = {}
+                    loop = asyncio.get_event_loop()
+                    
+                    for dep_type in task.dependencies:
+                        dep_type_capture = dep_type
+                        dep_output = await loop.run_in_executor(
+                            None,
+                            lambda dt=dep_type_capture: self.context_manager.get_agent_output(project_id, dt)
+                        )
+                        if dep_output:
+                            deps_content[dep_type] = dep_output.content
+                        else:
+                            # Optional dependencies (like PROJECT_CHARTER for individual profile) may be None
+                            logger.debug(f"  ℹ️  Phase 1 dependency {dep_type.value} not found in context for {task.task_id} (may be optional)")
+                            deps_content[dep_type] = None
+                    
+                    # Build kwargs for agent.generate_and_save
+                    kwargs = build_kwargs_for_phase1_task(
+                        task=task,
+                        user_idea=user_idea,
+                        project_id=project_id,
+                        context_manager=self.context_manager,
+                        deps_content=deps_content
+                    )
+                    
+                    # Note: Each Phase 1 agent has its own FileManager with base_dir set to docs/{folder}
+                    # For example: RequirementsAnalyst has base_dir="docs/requirements"
+                    # So we just need to pass the filename (e.g., "requirements.md"), NOT the folder prefix
+                    # The folder prefix would cause duplicate paths like docs/requirements/requirements/requirements.md
+                    # build_kwargs_for_phase1_task already returns the correct filename from task.output_filename
+                    # So we don't need to call get_output_filename_for_agent here
+                    
+                    # Get agent instance
+                    agent = get_agent_for_phase1_task(self, task.agent_type)
+                    if not agent:
+                        raise ValueError(f"Agent not found for {task.agent_type.value}")
+                    
+                    # Execute with quality gate (async version)
+                    logger.info(f"🔍 Executing Phase 1 task {task.task_id} with quality gate (threshold: {task.quality_threshold})...")
+                    # kwargs already contains output_filename, project_id, context_manager
+                    # Pass None for output_filename and project_id so they're extracted from kwargs
+                    file_path, content = await self._async_run_agent_with_quality_loop(
+                        agent_instance=agent,
+                        agent_type=task.agent_type,
+                        generate_kwargs=kwargs,
+                        output_filename=None,  # Will be extracted from kwargs
+                        project_id=None,  # Will be extracted from kwargs
+                        quality_threshold=task.quality_threshold
+                    )
+                    
+                    # Result is automatically saved to context by _async_run_agent_with_quality_loop
+                    # Just return the result, it will be collected by AsyncParallelExecutor
+                    logger.info(f"✅ Phase 1 task {task.task_id} completed: {len(content)} characters")
+                    return file_path, content
+                
+                return execute_phase1_task
+            
+            # Add all Phase 1 tasks to async executor
+            for task in phase1_tasks:
+                task_coro = create_phase1_task_coro(task)()
+                dep_task_ids = phase1_dependency_map.get(task.task_id, [])
+                
+                executor.add_task(
+                    task_id=task.task_id,
+                    coro=task_coro,
+                    dependencies=dep_task_ids
+                )
+                logger.debug(f"  📝 Added Phase 1 async task: {task.task_id} (depends on: {dep_task_ids}, quality_threshold: {task.quality_threshold})")
+            
+            # Execute Phase 1 tasks asynchronously with dependency resolution
+            logger.info("🚀 Executing Phase 1 tasks in parallel (respecting dependencies)...")
+            # Run async executor in event loop (handle both sync and async contexts)
+            try:
+                # Try to get the current event loop
+                loop = asyncio.get_running_loop()
+                # If we're in an async context, we need to use a different approach
+                # Create a new event loop in a thread
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor_pool:
+                    future = executor_pool.submit(asyncio.run, executor.execute())
+                    phase1_task_results = future.result()
+            except RuntimeError:
+                # No event loop running, we can use asyncio.run()
+                phase1_task_results = asyncio.run(executor.execute())
+            
+            # Process Phase 1 results and update results dictionary
+            req_content = None
+            charter_content = None
+            stories_content = None
+            tech_content = None
+            db_content = None
+            
+            for task in phase1_tasks:
+                task_result = phase1_task_results.get(task.task_id)
+                if task_result:
+                    if isinstance(task_result, tuple) and len(task_result) == 2:
+                        file_path, content = task_result
+                    else:
+                        # Handle case where result might be different format
+                        logger.warning(f"Unexpected result format for {task.task_id}: {type(task_result)}")
+                        continue
+                    
+                    # Update results dictionary
+                    if task.agent_type == AgentType.REQUIREMENTS_ANALYST:
+                        results["files"]["requirements"] = file_path
+                        results["status"]["requirements"] = "complete_v2"
+                        req_content = content
+                    elif task.agent_type == AgentType.PROJECT_CHARTER:
+                        results["files"]["project_charter"] = file_path
+                        results["status"]["project_charter"] = "complete_v2"
+                        charter_content = content
+                    elif task.agent_type == AgentType.USER_STORIES:
+                        results["files"]["user_stories"] = file_path
+                        results["status"]["user_stories"] = "complete_v2"
+                        stories_content = content
+                    elif task.agent_type == AgentType.TECHNICAL_DOCUMENTATION:
+                        results["files"]["technical_documentation"] = file_path
+                        results["status"]["technical_documentation"] = "complete_v2"
+                        tech_content = content
+                    elif task.agent_type == AgentType.DATABASE_SCHEMA:
+                        results["files"]["database_schema"] = file_path
+                        results["status"]["database_schema"] = "complete_v2"
+                        db_content = content
+                    
+                    final_docs[task.agent_type] = content
+                    document_file_paths[task.agent_type] = file_path
+                else:
+                    logger.error(f"❌ Phase 1 task {task.task_id} failed or returned no result")
+                    # Mark as failed in status
+                    doc_type_map = {
+                        AgentType.REQUIREMENTS_ANALYST: "requirements",
+                        AgentType.PROJECT_CHARTER: "project_charter",
+                        AgentType.USER_STORIES: "user_stories",
+                        AgentType.TECHNICAL_DOCUMENTATION: "technical_documentation",
+                        AgentType.DATABASE_SCHEMA: "database_schema",
+                    }
+                    doc_type = doc_type_map.get(task.agent_type, task.agent_type.value)
+                    results["status"][doc_type] = "failed"
+            
+            # Verify requirements were generated
+            if not req_content:
+                raise ValueError("Requirements not generated in Phase 1")
             
             # Get requirements summary from context
             context = self.context_manager.get_shared_context(project_id)
@@ -719,96 +904,8 @@ Improvement Suggestions:
             
             req_summary = context.get_requirements_summary()
             
-            # 2. PROJECT CHARTER (Team only, with quality gate)
-            charter_content = None
-            if profile == "team":
-                charter_path, charter_content = self._run_agent_with_quality_loop(
-                    agent_instance=self.project_charter_agent,
-                    agent_type=AgentType.PROJECT_CHARTER,
-                    generate_kwargs={"requirements_summary": req_summary},
-                    output_filename="charter/project_charter.md",
-                    project_id=project_id,
-                    quality_threshold=75.0
-                )
-                results["files"]["project_charter"] = charter_path
-                results["status"]["project_charter"] = "complete_v2"
-                final_docs[AgentType.PROJECT_CHARTER] = charter_content
-                document_file_paths[AgentType.PROJECT_CHARTER] = charter_path
-            else:
-                results["status"]["project_charter"] = "skipped"
-            
-            # 3. USER STORIES (with quality gate)
-            user_stories_output = self.context_manager.get_agent_output(project_id, AgentType.PROJECT_CHARTER)
-            charter_summary_for_stories = user_stories_output.content if user_stories_output else charter_content
-            
-            stories_path, stories_content = self._run_agent_with_quality_loop(
-                agent_instance=self.user_stories_agent,
-                agent_type=AgentType.USER_STORIES,
-                generate_kwargs={
-                    "requirements_summary": req_summary,
-                    "project_charter_summary": charter_summary_for_stories
-                },
-                output_filename="user_stories/user_stories.md",
-                project_id=project_id,
-                quality_threshold=75.0
-            )
-            results["files"]["user_stories"] = stories_path
-            results["status"]["user_stories"] = "complete_v2"
-            final_docs[AgentType.USER_STORIES] = stories_content
-            document_file_paths[AgentType.USER_STORIES] = stories_path
-            
-            # 4. TECHNICAL DOCUMENTATION (with quality gate)
-            # Note: PM documentation is generated in Phase 2, so we don't have it here
-            # Technical doc should include database design overview (high-level design)
-            user_stories_output = self.context_manager.get_agent_output(project_id, AgentType.USER_STORIES)
-            user_stories_summary = user_stories_output.content if user_stories_output else stories_content
-            
-            # PM summary is not available in Phase 1 (it's generated in Phase 2)
-            # Technical documentation can work without it
-            pm_summary_for_tech = None
-            
-            logger.info("📊 Generating Technical Documentation (includes database design overview)...")
-            
-            tech_path, tech_content = self._run_agent_with_quality_loop(
-                agent_instance=self.technical_agent,
-                agent_type=AgentType.TECHNICAL_DOCUMENTATION,
-                generate_kwargs={
-                    "requirements_summary": req_summary,
-                    "user_stories_summary": user_stories_summary,
-                    "pm_summary": pm_summary_for_tech
-                },
-                output_filename="technical/technical_spec.md",
-                project_id=project_id,
-                quality_threshold=70.0
-            )
-            results["files"]["technical_documentation"] = tech_path
-            results["status"]["technical_documentation"] = "complete_v2"
-            final_docs[AgentType.TECHNICAL_DOCUMENTATION] = tech_content
-            document_file_paths[AgentType.TECHNICAL_DOCUMENTATION] = tech_path
-            
-            # 5. DATABASE SCHEMA (with quality gate)
-            # Database schema is generated AFTER technical doc, so it can use the database design overview
-            # from technical doc to generate detailed SQL schemas
-            logger.info("📊 Generating Database Schema (based on technical doc database design overview)...")
-            
-            db_path, db_content = self._run_agent_with_quality_loop(
-                agent_instance=self.database_schema_agent,
-                agent_type=AgentType.DATABASE_SCHEMA,
-                generate_kwargs={
-                    "requirements_summary": req_summary,
-                    "technical_summary": tech_content  # Use full technical doc for database design overview
-                },
-                output_filename="database/database_schema.md",
-                project_id=project_id,
-                quality_threshold=70.0
-            )
-            results["files"]["database_schema"] = db_path
-            results["status"]["database_schema"] = "complete_v2"
-            final_docs[AgentType.DATABASE_SCHEMA] = db_content
-            document_file_paths[AgentType.DATABASE_SCHEMA] = db_path
-            
             logger.info("=" * 80)
-            logger.info("✅ PHASE 1 COMPLETE: Foundational documents generated with quality gates")
+            logger.info("✅ PHASE 1 COMPLETE: Foundational documents generated with quality gates (DAG)")
             logger.info("=" * 80)
             
             # Get technical summary and database schema for Phase 2
@@ -880,6 +977,10 @@ Improvement Suggestions:
                         context_manager=self.context_manager,
                         deps_content=deps_content
                     )
+                    
+                    # Apply folder prefix to output_filename based on agent type
+                    if "output_filename" in kwargs:
+                        kwargs["output_filename"] = get_output_filename_for_agent(task.agent_type, kwargs["output_filename"])
                     
                     # Get agent instance
                     agent = get_agent_for_task(self, task.agent_type)
@@ -964,6 +1065,11 @@ Improvement Suggestions:
                             context_manager=self.context_manager,
                             deps_content=deps_content
                         )
+                        
+                        # Apply folder prefix to output_filename based on agent type
+                        if "output_filename" in kwargs:
+                            kwargs["output_filename"] = get_output_filename_for_agent(task.agent_type, kwargs["output_filename"])
+                        
                         agent = get_agent_for_task(self, task.agent_type)
                         if not agent:
                             raise ValueError(f"Agent not found for {task.agent_type.value}")
