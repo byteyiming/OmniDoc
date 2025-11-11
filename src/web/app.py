@@ -730,9 +730,10 @@ async def generate_docs(request: GenerationRequest):
             run_generation_async(
                 request.user_idea,
                 project_id,
-                request.profile,
+                request.profile or "team",
                 request.provider_name,
-                request.codebase_path
+                request.codebase_path,
+                request.workflow_mode or "docs_first"
             )
         )
         
@@ -750,12 +751,26 @@ async def run_generation_async(
     project_id: str,
     profile: str = "team",
     provider_name: Optional[str] = None,
-    codebase_path: Optional[str] = None
+    codebase_path: Optional[str] = None,
+    workflow_mode: str = "docs_first"
 ):
     """Run documentation generation asynchronously and update status in database"""
     local_context_manager = context_manager if context_manager else ContextManager()
     
     try:
+        logger.info(f"🚀 Starting async generation for project {project_id}")
+        logger.info(f"   User Idea: {user_idea[:100]}...")
+        logger.info(f"   Profile: {profile}")
+        logger.info(f"   Workflow Mode: {workflow_mode}")
+        logger.info(f"   Provider: {provider_name or 'default'}")
+        
+        # Send WebSocket progress update
+        await websocket_manager.send_progress(project_id, {
+            "type": "start",
+            "message": "Documentation generation started",
+            "project_id": project_id
+        })
+        
         # Create a new coordinator with the specified provider
         if provider_name:
             local_coordinator = WorkflowCoordinator(
@@ -770,19 +785,39 @@ async def run_generation_async(
         
         # Use async version if available, otherwise run sync in executor
         if hasattr(local_coordinator, 'async_generate_all_docs'):
-            workflow_mode = request.workflow_mode or "docs_first"
+            logger.info("   Using async_generate_all_docs method")
             results = await local_coordinator.async_generate_all_docs(
-                user_idea, project_id, profile, codebase_path=codebase_path, workflow_mode=workflow_mode
+                user_idea=user_idea,
+                project_id=project_id,
+                profile=profile,
+                codebase_path=codebase_path,
+                workflow_mode=workflow_mode
             )
         else:
             # Fallback: run sync version in executor
+            logger.info("   Using sync generate_all_docs in executor")
             loop = asyncio.get_event_loop()
             results = await loop.run_in_executor(
                 None,
                 lambda: local_coordinator.generate_all_docs(
-                    user_idea, project_id, profile, codebase_path=codebase_path, workflow_mode=request.workflow_mode or "docs_first"
+                    user_idea=user_idea,
+                    project_id=project_id,
+                    profile=profile,
+                    codebase_path=codebase_path,
+                    workflow_mode=workflow_mode
                 )
             )
+        
+        logger.info(f"✅ Generation complete for project {project_id}")
+        logger.info(f"   Generated {len(results.get('files', {}))} documents")
+        
+        # Send WebSocket completion update
+        await websocket_manager.send_progress(project_id, {
+            "type": "complete",
+            "message": "Documentation generation complete",
+            "project_id": project_id,
+            "files_count": len(results.get('files', {}))
+        })
         
         # Update status in database
         local_context_manager.update_project_status(
@@ -791,12 +826,32 @@ async def run_generation_async(
             completed_agents=list(results.get("files", {}).keys()),
             results=results
         )
+        
+        logger.info(f"✅ Status updated in database for project {project_id}")
+        
     except Exception as e:
-        local_context_manager.update_project_status(
-            project_id=project_id,
-            status="failed",
-            error=str(e)
-        )
+        logger.error(f"❌ Error in async generation for project {project_id}: {e}", exc_info=True)
+        
+        # Send WebSocket error update
+        try:
+            await websocket_manager.send_progress(project_id, {
+                "type": "error",
+                "message": f"Generation failed: {str(e)}",
+                "project_id": project_id,
+                "error": str(e)
+            })
+        except Exception as ws_error:
+            logger.warning(f"Failed to send WebSocket error message: {ws_error}")
+        
+        # Update status in database
+        try:
+            local_context_manager.update_project_status(
+                project_id=project_id,
+                status="failed",
+                error=str(e)
+            )
+        except Exception as db_error:
+            logger.error(f"Failed to update status in database: {db_error}")
 
 
 def run_generation(
@@ -804,32 +859,51 @@ def run_generation(
     project_id: str,
     profile: str = "team",
     provider_name: Optional[str] = None,
-    codebase_path: Optional[str] = None
+    codebase_path: Optional[str] = None,
+    workflow_mode: str = "docs_first"
 ):
     """Run documentation generation in background (sync version, kept for backward compatibility)"""
     local_context_manager = context_manager if context_manager else ContextManager()
     
     try:
+        logger.info(f"🚀 Starting sync generation for project {project_id}")
+        logger.info(f"   User Idea: {user_idea[:100]}...")
+        logger.info(f"   Profile: {profile}")
+        logger.info(f"   Workflow Mode: {workflow_mode}")
+        
         if provider_name:
             local_coordinator = WorkflowCoordinator(
                 context_manager=local_context_manager,
                 provider_name=provider_name
             )
-            workflow_mode = request.workflow_mode or "docs_first"
             results = local_coordinator.generate_all_docs(
-                user_idea, project_id, profile, codebase_path=codebase_path, workflow_mode=workflow_mode
+                user_idea=user_idea,
+                project_id=project_id,
+                profile=profile,
+                codebase_path=codebase_path,
+                workflow_mode=workflow_mode
             )
         else:
-            workflow_mode = request.workflow_mode or "docs_first"
             if coordinator:
                 results = coordinator.generate_all_docs(
-                    user_idea, project_id, profile, codebase_path=codebase_path, workflow_mode=workflow_mode
+                    user_idea=user_idea,
+                    project_id=project_id,
+                    profile=profile,
+                    codebase_path=codebase_path,
+                    workflow_mode=workflow_mode
                 )
             else:
                 local_coordinator = WorkflowCoordinator(context_manager=local_context_manager)
                 results = local_coordinator.generate_all_docs(
-                    user_idea, project_id, profile, codebase_path=codebase_path, workflow_mode=workflow_mode
+                    user_idea=user_idea,
+                    project_id=project_id,
+                    profile=profile,
+                    codebase_path=codebase_path,
+                    workflow_mode=workflow_mode
                 )
+        
+        logger.info(f"✅ Generation complete for project {project_id}")
+        logger.info(f"   Generated {len(results.get('files', {}))} documents")
         
         local_context_manager.update_project_status(
             project_id=project_id,
@@ -838,6 +912,7 @@ def run_generation(
             results=results
         )
     except Exception as e:
+        logger.error(f"❌ Error in sync generation for project {project_id}: {e}", exc_info=True)
         local_context_manager.update_project_status(
             project_id=project_id,
             status="failed",
