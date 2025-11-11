@@ -192,10 +192,10 @@ class APIDocumentationAgent(BaseAgent):
                 status=DocumentStatus.COMPLETE,
                 generated_at=datetime.now()
             )
-        await loop.run_in_executor(
-            None,
-            lambda: context_manager.save_agent_output(project_id, output)
-        )
+            await loop.run_in_executor(
+                None,
+                lambda: context_manager.save_agent_output(project_id, output)
+            )
         
         return file_path
 

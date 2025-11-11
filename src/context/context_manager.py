@@ -4,6 +4,7 @@ Manages shared context database for agent collaboration
 """
 import sqlite3
 import json
+import threading
 from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime
@@ -30,6 +31,7 @@ class ContextManager:
         """
         self.db_path = Path(db_path)
         self.connection: Optional[sqlite3.Connection] = None
+        self._lock = threading.Lock()  # Thread lock for database operations
         self._initialize_database()
     
     def _initialize_database(self):
@@ -139,29 +141,36 @@ class ContextManager:
         return project_id
     
     def save_requirements(self, project_id: str, requirements: RequirementsDocument):
-        """Save requirements document"""
-        cursor = self.connection.cursor()
-        
-        cursor.execute("""
-            INSERT OR REPLACE INTO requirements (
-                project_id, user_idea, project_overview, core_features,
-                technical_requirements, user_personas, business_objectives,
-                constraints, assumptions, generated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            project_id,
-            requirements.user_idea,
-            requirements.project_overview,
-            json.dumps(requirements.core_features),
-            json.dumps(requirements.technical_requirements),
-            json.dumps(requirements.user_personas),
-            json.dumps(requirements.business_objectives),
-            json.dumps(requirements.constraints),
-            json.dumps(requirements.assumptions),
-            requirements.generated_at.isoformat()
-        ))
-        
-        self.connection.commit()
+        """Save requirements document (thread-safe)"""
+        with self._lock:
+            try:
+                cursor = self.connection.cursor()
+                
+                cursor.execute("""
+                    INSERT OR REPLACE INTO requirements (
+                        project_id, user_idea, project_overview, core_features,
+                        technical_requirements, user_personas, business_objectives,
+                        constraints, assumptions, generated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    project_id,
+                    requirements.user_idea,
+                    requirements.project_overview,
+                    json.dumps(requirements.core_features),
+                    json.dumps(requirements.technical_requirements),
+                    json.dumps(requirements.user_personas),
+                    json.dumps(requirements.business_objectives),
+                    json.dumps(requirements.constraints),
+                    json.dumps(requirements.assumptions),
+                    requirements.generated_at.isoformat()
+                ))
+                
+                self.connection.commit()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error saving requirements for {project_id}: {e}", exc_info=True)
+                raise
     
     def get_requirements(self, project_id: str) -> Optional[RequirementsDocument]:
         """Get requirements for a project"""
@@ -185,30 +194,60 @@ class ContextManager:
         )
     
     def save_agent_output(self, project_id: str, output: AgentOutput):
-        """Save agent output"""
-        cursor = self.connection.cursor()
-        output_id = f"{project_id}_{output.agent_type.value}"
+        """
+        Save agent output (thread-safe)
         
-        cursor.execute("""
-            INSERT OR REPLACE INTO agent_outputs (
-                output_id, project_id, agent_type, document_type,
-                content, file_path, quality_score, status,
-                dependencies, generated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            output_id,
-            project_id,
-            output.agent_type.value,
-            output.document_type,
-            output.content,
-            output.file_path,
-            output.quality_score,
-            output.status.value,
-            json.dumps(output.dependencies),
-            output.generated_at.isoformat() if output.generated_at else None
-        ))
-        
-        self.connection.commit()
+        Args:
+            project_id: Project identifier
+            output: AgentOutput to save
+        """
+        with self._lock:
+            try:
+                cursor = self.connection.cursor()
+                output_id = f"{project_id}_{output.agent_type.value}"
+                
+                # Ensure dependencies is a list (handle None or other types)
+                dependencies = output.dependencies
+                if dependencies is None:
+                    dependencies = []
+                elif not isinstance(dependencies, list):
+                    # Try to convert to list if possible
+                    dependencies = list(dependencies) if hasattr(dependencies, '__iter__') else []
+                
+                # Ensure all values are properly formatted
+                generated_at_str = None
+                if output.generated_at:
+                    if isinstance(output.generated_at, datetime):
+                        generated_at_str = output.generated_at.isoformat()
+                    elif isinstance(output.generated_at, str):
+                        generated_at_str = output.generated_at
+                
+                cursor.execute("""
+                    INSERT OR REPLACE INTO agent_outputs (
+                        output_id, project_id, agent_type, document_type,
+                        content, file_path, quality_score, status,
+                        dependencies, generated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    output_id,
+                    project_id,
+                    output.agent_type.value,
+                    output.document_type,
+                    output.content,
+                    output.file_path,
+                    output.quality_score,
+                    output.status.value,
+                    json.dumps(dependencies),
+                    generated_at_str
+                ))
+                
+                self.connection.commit()
+            except Exception as e:
+                # Log error and re-raise
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error saving agent output for {project_id}/{output.agent_type.value}: {e}", exc_info=True)
+                raise
     
     def get_agent_output(self, project_id: str, agent_type: AgentType) -> Optional[AgentOutput]:
         """Get agent output for a project"""
@@ -257,25 +296,32 @@ class ContextManager:
         return outputs
     
     def save_cross_reference(self, project_id: str, ref: CrossReference):
-        """Save cross-reference"""
-        cursor = self.connection.cursor()
-        ref_id = f"{project_id}_{ref.from_document}_{ref.to_document}"
-        
-        cursor.execute("""
-            INSERT OR REPLACE INTO cross_references (
-                ref_id, project_id, from_document, to_document,
-                reference_type, description
-            ) VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            ref_id,
-            project_id,
-            ref.from_document,
-            ref.to_document,
-            ref.reference_type,
-            ref.description
-        ))
-        
-        self.connection.commit()
+        """Save cross-reference (thread-safe)"""
+        with self._lock:
+            try:
+                cursor = self.connection.cursor()
+                ref_id = f"{project_id}_{ref.from_document}_{ref.to_document}"
+                
+                cursor.execute("""
+                    INSERT OR REPLACE INTO cross_references (
+                        ref_id, project_id, from_document, to_document,
+                        reference_type, description
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    ref_id,
+                    project_id,
+                    ref.from_document,
+                    ref.to_document,
+                    ref.reference_type,
+                    ref.description
+                ))
+                
+                self.connection.commit()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error saving cross-reference for {project_id}: {e}", exc_info=True)
+                raise
     
     def get_shared_context(self, project_id: str) -> SharedContext:
         """Get complete shared context for a project"""
@@ -339,7 +385,7 @@ class ContextManager:
         error: Optional[str] = None
     ):
         """
-        Update project workflow status in database
+        Update project workflow status in database (thread-safe)
         
         Args:
             project_id: Project identifier
@@ -351,71 +397,78 @@ class ContextManager:
             results: Generation results dictionary
             error: Error message (if status is "failed")
         """
-        cursor = self.connection.cursor()
-        now = datetime.now().isoformat()
-        
-        # Check if status record exists
-        cursor.execute("SELECT status, started_at FROM project_status WHERE project_id = ?", (project_id,))
-        existing = cursor.fetchone()
-        
-        if existing:
-            # Update existing status
-            update_fields = ["status = ?"]
-            update_values = [status]
-            
-            if completed_agents is not None:
-                update_fields.append("completed_agents = ?")
-                update_values.append(json.dumps(completed_agents))
-            
-            if results is not None:
-                update_fields.append("results = ?")
-                update_values.append(json.dumps(results))
-            
-            if error is not None:
-                update_fields.append("error = ?")
-                update_fields.append("failed_at = ?")
-                update_values.append(error)
-                update_values.append(now)
-            elif status == "complete":
-                update_fields.append("completed_at = ?")
-                update_values.append(now)
-            
-            update_values.append(project_id)
-            cursor.execute(f"""
-                UPDATE project_status 
-                SET {', '.join(update_fields)}
-                WHERE project_id = ?
-            """, update_values)
-            
-            # Also update projects table updated_at
-            cursor.execute("""
-                UPDATE projects 
-                SET updated_at = ?
-                WHERE project_id = ?
-            """, (now, project_id))
-        else:
-            # Create new status record
-            if not user_idea:
-                raise ValueError("user_idea is required when creating new project status")
-            
-            cursor.execute("""
-                INSERT INTO project_status (
-                    project_id, status, user_idea, profile, provider_name,
-                    started_at, completed_agents, results, error
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                project_id,
-                status,
-                user_idea,
-                profile,
-                provider_name or "default",
-                now,
-                json.dumps(completed_agents or []),
-                json.dumps(results or {}),
-                error
-            ))
-        
-        self.connection.commit()
+        with self._lock:
+            try:
+                cursor = self.connection.cursor()
+                now = datetime.now().isoformat()
+                
+                # Check if status record exists
+                cursor.execute("SELECT status, started_at FROM project_status WHERE project_id = ?", (project_id,))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing status
+                    update_fields = ["status = ?"]
+                    update_values = [status]
+                    
+                    if completed_agents is not None:
+                        update_fields.append("completed_agents = ?")
+                        update_values.append(json.dumps(completed_agents) if completed_agents else "[]")
+                    
+                    if results is not None:
+                        update_fields.append("results = ?")
+                        update_values.append(json.dumps(results) if results else "{}")
+                    
+                    if error is not None:
+                        update_fields.append("error = ?")
+                        update_fields.append("failed_at = ?")
+                        update_values.append(error)
+                        update_values.append(now)
+                    elif status == "complete":
+                        update_fields.append("completed_at = ?")
+                        update_values.append(now)
+                    
+                    update_values.append(project_id)
+                    cursor.execute(f"""
+                        UPDATE project_status 
+                        SET {', '.join(update_fields)}
+                        WHERE project_id = ?
+                    """, update_values)
+                    
+                    # Also update projects table updated_at
+                    cursor.execute("""
+                        UPDATE projects 
+                        SET updated_at = ?
+                        WHERE project_id = ?
+                    """, (now, project_id))
+                else:
+                    # Create new status record
+                    if not user_idea:
+                        raise ValueError("user_idea is required when creating new project status")
+                    
+                    cursor.execute("""
+                        INSERT INTO project_status (
+                            project_id, status, user_idea, profile, provider_name,
+                            started_at, completed_agents, results, error
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        project_id,
+                        status,
+                        user_idea,
+                        profile,
+                        provider_name or "default",
+                        now,
+                        json.dumps(completed_agents or []),
+                        json.dumps(results or {}),
+                        error
+                    ))
+                
+                self.connection.commit()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error updating project status for {project_id}: {e}", exc_info=True)
+                raise
     
     def get_project_status(self, project_id: str) -> Optional[Dict]:
         """
