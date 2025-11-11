@@ -706,9 +706,10 @@ REMEMBER: You are Level 2. Use Level 1 (Project Charter) as your PRIMARY source.
 def get_technical_prompt(
     requirements_summary: dict,
     user_stories_summary: Optional[str] = None,
-    pm_summary: Optional[str] = None
+    pm_summary: Optional[str] = None,
+    code_analysis_summary: Optional[str] = None
 ) -> str:
-    """Get full technical documentation prompt with requirements, user stories, and PM summaries"""
+    """Get full technical documentation prompt with requirements, user stories, PM summaries, and optional code analysis"""
     req_text = f"""
 Project Overview: {requirements_summary.get('project_overview', 'N/A')}
 
@@ -755,27 +756,82 @@ Consider the project timeline, resource requirements, and milestones when making
 technical architecture decisions. Align technical approach with project constraints.
 """
     
-    # LEVEL 3: Must use Level 2 outputs as PRIMARY source
-    if not user_stories_summary and not pm_summary:
-        raise ValueError("Level 3 (Technical Documentation) REQUIRES at least one Level 2 output (User Stories or PM Plan). Cannot proceed without it.")
+    # LEVEL 3: Must use Level 2 outputs as PRIMARY source (unless code-first mode)
+    # In code-first mode, code analysis is the primary source
+    if not code_analysis_summary and not user_stories_summary and not pm_summary:
+        raise ValueError("Level 3 (Technical Documentation) REQUIRES at least one Level 2 output (User Stories or PM Plan) or code analysis (code-first mode). Cannot proceed without it.")
     
     tech_prompt = apply_readability_guidelines(TECHNICAL_DOCUMENTATION_PROMPT)
-    final_prompt = f"""{tech_prompt}
+    final_prompt = ""
+    
+    # In code-first mode, code analysis is the PRIMARY source
+    if code_analysis_summary:
+        final_prompt = f"""{tech_prompt}
+
+=== CODEBASE ANALYSIS (Code-First Mode - PRIMARY SOURCE) ===
+The following codebase analysis was performed on the ACTUAL code. This is your PRIMARY source for technical documentation.
+
+CRITICAL INSTRUCTIONS FOR CODE-FIRST MODE:
+1. Design the technical architecture based on EXISTING code structure
+2. Document the ACTUAL system architecture, classes, and functions found in the code
+3. Ensure the technical documentation ACCURATELY reflects the implemented system
+4. Use the analyzed classes and functions to design APIs and database schemas that match the code
+5. The code analysis shows the REAL implementation - document what exists, not what should exist
+
+{code_analysis_summary}
+
+REMEMBER: In code-first mode, you MUST accurately reflect the actual codebase structure.
+Your technical documentation should describe the EXISTING system, not design a new one.
+"""
+        
+        # Also include user stories and PM summary if available (for context)
+        if user_stories_summary:
+            user_stories_processed = summarize_document(
+                user_stories_summary,
+                document_type="user stories",
+                target_agent="technical_documentation"
+            ) if len(user_stories_summary) > 2000 else user_stories_summary
+            
+            final_prompt += f"""
+
+ADDITIONAL CONTEXT - User Stories (Level 2 Output):
+{user_stories_processed}
+
+NOTE: Use this as additional context to understand user requirements, but prioritize documenting the ACTUAL code structure above.
+"""
+        
+        if pm_summary:
+            pm_processed = summarize_document(
+                pm_summary,
+                document_type="project management plan",
+                target_agent="technical_documentation"
+            ) if len(pm_summary) > 1500 else pm_summary
+            
+            final_prompt += f"""
+
+ADDITIONAL CONTEXT - Project Management Plan (Level 2 Output):
+{pm_processed}
+
+NOTE: Use this as additional context for project constraints, but prioritize documenting the ACTUAL code structure above.
+"""
+    else:
+        # Docs-first mode: Use Level 2 outputs as primary source
+        final_prompt = f"""{tech_prompt}
 
 === LEVEL 3: Technical Documentation ===
 You are generating Level 3 documentation, which MUST be based on Level 2 outputs (User Stories & PM Plan).
 
 PRIMARY SOURCES - Level 2 Outputs:
 """
-    
-    if user_stories_summary:
-        user_stories_processed = summarize_document(
-            user_stories_summary,
-            document_type="user stories",
-            target_agent="technical_documentation"
-        ) if len(user_stories_summary) > 2000 else user_stories_summary
-        
-        final_prompt += f"""
+
+        if user_stories_summary:
+            user_stories_processed = summarize_document(
+                user_stories_summary,
+                document_type="user stories",
+                target_agent="technical_documentation"
+            ) if len(user_stories_summary) > 2000 else user_stories_summary
+            
+            final_prompt += f"""
 User Stories & Epics (Level 2 Output):
 {user_stories_processed}
 
@@ -784,15 +840,15 @@ CRITICAL: Use the user stories above to design the technical system. Each user s
 - Database tables and relationships to support the story
 - Technical architecture that enables the acceptance criteria
 """
-    
-    if pm_summary:
-        pm_processed = summarize_document(
-            pm_summary,
-            document_type="project management plan",
-            target_agent="technical_documentation"
-        ) if len(pm_summary) > 1500 else pm_summary
-        
-        final_prompt += f"""
+
+        if pm_summary:
+            pm_processed = summarize_document(
+                pm_summary,
+                document_type="project management plan",
+                target_agent="technical_documentation"
+            ) if len(pm_summary) > 1500 else pm_summary
+            
+            final_prompt += f"""
 
 Project Management Plan (Level 2 Output):
 {pm_processed}
@@ -802,22 +858,41 @@ CRITICAL: Use the PM plan above to inform technical decisions:
 - Design architecture that supports the project milestones
 - Consider team skills and budget from the PM plan
 """
-    
+
     final_prompt += f"""
 
 CRITICAL REMINDERS:
-- You are Level 3. Use Level 2 (User Stories & PM Plan) as your PRIMARY sources
-- DO NOT repeat requirements or Level 1/2 content - design technical solutions
-- Design SPECIFIC technical architecture to support the user stories
-- Create ACTUAL database schemas with SQL CREATE TABLE statements
-- Design CONCRETE API endpoints (list specific endpoints with paths)
-- Recommend SPECIFIC technology versions based on PM plan constraints
-- Make this document actionable for developers to implement the user stories
+"""
+    
+    if code_analysis_summary:
+        final_prompt += """
+- You are in CODE-FIRST mode. Document the ACTUAL codebase structure and implementation.
+- DO NOT design a new system - document what EXISTS in the code.
+- Use the code analysis to accurately reflect the real system architecture, APIs, and database design.
+- Make this document actionable for developers to understand the EXISTING system.
+"""
+    else:
+        final_prompt += """
+- You are Level 3. Use Level 2 (User Stories & PM Plan) as your PRIMARY sources.
+- DO NOT repeat requirements or Level 1/2 content - design technical solutions.
+- Design SPECIFIC technical architecture to support the user stories.
+- Create ACTUAL database schemas with SQL CREATE TABLE statements.
+- Design CONCRETE API endpoints (list specific endpoints with paths).
+- Recommend SPECIFIC technology versions based on PM plan constraints.
+- Make this document actionable for developers to implement the user stories.
+"""
+
+    final_prompt += f"""
 
 Reference Information (for context only):
 Project Overview: {requirements_summary.get('project_overview', 'N/A')}
 
-Generate the complete technical specification document based on Level 2 outputs:"""
+"""
+    
+    if code_analysis_summary:
+        final_prompt += "Generate the complete technical specification document based on the ACTUAL codebase analysis:"
+    else:
+        final_prompt += "Generate the complete technical specification document based on Level 2 outputs:"
     
     return final_prompt
 
@@ -825,23 +900,64 @@ Generate the complete technical specification document based on Level 2 outputs:
 def get_api_prompt(
     requirements_summary: dict, 
     technical_summary: Optional[str] = None,
-    database_schema_summary: Optional[str] = None
+    database_schema_summary: Optional[str] = None,
+    code_analysis_summary: Optional[str] = None
 ) -> str:
-    """Get full API documentation prompt - Level 3 must use Technical Spec and Database Schema"""
+    """Get full API documentation prompt - Level 3 must use Technical Spec and Database Schema, optionally with code analysis"""
     
-    # LEVEL 3: Must use Level 3 Technical Documentation as PRIMARY source
-    if not technical_summary:
-        raise ValueError("API Documentation (Level 3) REQUIRES Technical Documentation output. Cannot proceed without it.")
+    # LEVEL 3: Must use Level 3 Technical Documentation as PRIMARY source (unless code-first mode)
+    # In code-first mode, code analysis is the primary source
+    if not code_analysis_summary and not technical_summary:
+        raise ValueError("API Documentation (Level 3) REQUIRES Technical Documentation output or code analysis (code-first mode). Cannot proceed without it.")
     
-    # Summarize technical documentation instead of truncating
-    tech_summary = summarize_document(
-        technical_summary,
-        document_type="technical documentation",
-        target_agent="api_documentation",
-        focus_areas=["API endpoints and routes", "authentication mechanisms", "error handling patterns", "system architecture"]
-    ) if len(technical_summary) > 4000 else technical_summary
+    context = ""
     
-    context = f"""
+    # In code-first mode, code analysis is the PRIMARY source
+    if code_analysis_summary:
+        context = f"""
+=== CODEBASE ANALYSIS (Code-First Mode - PRIMARY SOURCE) ===
+The following codebase analysis was performed on the ACTUAL code. This is your PRIMARY source for API documentation.
+
+CRITICAL INSTRUCTIONS FOR CODE-FIRST MODE:
+1. Extract ACTUAL API endpoints from the analyzed code (classes, functions, methods)
+2. Document the REAL API endpoints that exist in the codebase
+3. Use the actual function signatures, parameters, and return types from the code
+4. Document the EXISTING API structure, not design a new one
+5. The code analysis shows the REAL implementation - document what exists
+
+{code_analysis_summary}
+
+REMEMBER: In code-first mode, you MUST accurately document the ACTUAL API endpoints found in the code.
+Your API documentation should describe the EXISTING APIs, not design new ones.
+"""
+        
+        # Also include technical summary if available (for context)
+        if technical_summary:
+            tech_summary = summarize_document(
+                technical_summary,
+                document_type="technical documentation",
+                target_agent="api_documentation",
+                focus_areas=["API endpoints and routes", "authentication mechanisms", "error handling patterns", "system architecture"]
+            ) if len(technical_summary) > 4000 else technical_summary
+            
+            context += f"""
+
+ADDITIONAL CONTEXT - Technical Documentation (Level 3):
+{tech_summary}
+
+NOTE: Use this technical documentation as additional context, but prioritize the code analysis above.
+"""
+    else:
+        # Docs-first mode: Use Technical Documentation as primary source
+        # Summarize technical documentation instead of truncating
+        tech_summary = summarize_document(
+            technical_summary,
+            document_type="technical documentation",
+            target_agent="api_documentation",
+            focus_areas=["API endpoints and routes", "authentication mechanisms", "error handling patterns", "system architecture"]
+        ) if len(technical_summary) > 4000 else technical_summary
+        
+        context = f"""
 === LEVEL 3: API Documentation ===
 You are generating Level 3 API documentation, which MUST be based on Technical Documentation and Database Schema outputs.
 
@@ -897,7 +1013,15 @@ Each API endpoint must:
 """
     
     api_prompt = apply_readability_guidelines(API_DOCUMENTATION_PROMPT)
-    return f"""{api_prompt}
+    
+    if code_analysis_summary:
+        return f"""{api_prompt}
+
+{context}
+
+REMEMBER: You are in CODE-FIRST mode. Document the ACTUAL API endpoints found in the codebase. Generate API documentation that accurately reflects the existing APIs."""
+    else:
+        return f"""{api_prompt}
 
 {context}
 

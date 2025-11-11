@@ -704,23 +704,27 @@ Improvement Suggestions:
         user_idea: str,
         project_id: Optional[str] = None,
         profile: str = "team",
-        codebase_path: Optional[str] = None
+        codebase_path: Optional[str] = None,
+        workflow_mode: str = "docs_first"
     ) -> Dict:
         """
         Generate all documentation types from a user idea using HYBRID workflow:
+        - Phase 0 (Code-First mode): Code analysis (optional, if codebase_path provided and workflow_mode="code_first")
         - Phase 1: Foundational documents with Quality Gate (iterative improvement)
         - Phase 2: Secondary documents in parallel (fast execution)
         - Phase 3: Final packaging (cross-ref, review, convert)
-        - Phase 4: Code analysis and documentation update (optional, if codebase_path provided)
+        - Phase 4: Code analysis and documentation update (optional, if codebase_path provided and workflow_mode="docs_first")
         
         Args:
             user_idea: User's project idea
             project_id: Optional project ID (generates one if not provided)
             profile: "team" or "individual" - determines which docs to generate
-            codebase_path: Optional path to codebase directory. If provided, Phase 4 will:
-                         - Analyze the codebase
-                         - Update API and Developer documentation to match actual code
-                         - Ensure documentation accuracy
+            codebase_path: Optional path to codebase directory.
+                         - If workflow_mode="code_first": Code analysis runs BEFORE Phase 1, results are used as input for Technical and API docs
+                         - If workflow_mode="docs_first": Code analysis runs in Phase 4, updates existing docs to match actual code
+            workflow_mode: "docs_first" (default) or "code_first"
+                          - "docs_first": Generate docs first, then update with code analysis (Phase 4)
+                          - "code_first": Analyze code first, then generate docs based on actual code (Phase 0)
         
         Returns:
             Dict with generated file paths and status
@@ -729,12 +733,18 @@ Improvement Suggestions:
         if not project_id:
             project_id = f"project_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
         
-        logger.info(f"🚀 Starting HYBRID Workflow - Project ID: {project_id}, Profile: {profile}")
+        workflow_mode = workflow_mode.lower()
+        if workflow_mode not in ["docs_first", "code_first"]:
+            logger.warning(f"Invalid workflow_mode '{workflow_mode}', using 'docs_first'")
+            workflow_mode = "docs_first"
+        
+        logger.info(f"🚀 Starting HYBRID Workflow - Project ID: {project_id}, Profile: {profile}, Mode: {workflow_mode}")
         
         results = {
             "project_id": project_id,
             "user_idea": user_idea,
             "profile": profile,
+            "workflow_mode": workflow_mode,
             "files": {},
             "status": {}
         }
@@ -743,7 +753,72 @@ Improvement Suggestions:
         final_docs = {}
         document_file_paths = {}
         
+        # Store code analysis results (for code-first mode)
+        code_analysis_result = None
+        code_analysis_summary = None
+        
         try:
+            # --- PHASE 0: CODE ANALYSIS (Code-First Mode) ---
+            if workflow_mode == "code_first" and codebase_path:
+                logger.info("=" * 80)
+                logger.info("--- PHASE 0: Code Analysis (Code-First Mode) ---")
+                logger.info("=" * 80)
+                logger.info(f"📁 Analyzing codebase at: {codebase_path}")
+                
+                try:
+                    # Analyze codebase
+                    logger.info("🔍 Analyzing codebase structure...")
+                    code_analysis_result = self.code_analyst.analyze_codebase(codebase_path)
+                    logger.info(f"  ✅ Code analysis complete: {len(code_analysis_result.get('modules', []))} modules, "
+                              f"{len(code_analysis_result.get('classes', []))} classes, "
+                              f"{len(code_analysis_result.get('functions', []))} functions")
+                    
+                    # Generate code analysis summary for use in documentation
+                    code_analysis_summary = f"""
+# Codebase Analysis Summary
+
+## Modules Analyzed: {len(code_analysis_result.get('modules', []))}
+## Classes Found: {len(code_analysis_result.get('classes', []))}
+## Functions Found: {len(code_analysis_result.get('functions', []))}
+
+## Key Classes:
+"""
+                    for cls in code_analysis_result.get('classes', [])[:20]:  # Limit to first 20
+                        code_analysis_summary += f"""
+### {cls.get('name', 'Unknown')} (in {cls.get('file', 'unknown')})
+- Docstring: {cls.get('docstring', 'No docstring')}
+- Methods: {len(cls.get('methods', []))}
+- Bases: {', '.join(cls.get('bases', []))}
+"""
+                    
+                    code_analysis_summary += "\n## Key Functions:\n"
+                    for func in code_analysis_result.get('functions', [])[:20]:  # Limit to first 20
+                        code_analysis_summary += f"""
+### {func.get('name', 'Unknown')} (in {func.get('file', 'unknown')})
+- Docstring: {func.get('docstring', 'No docstring')}
+- Args: {', '.join(func.get('args', []))}
+"""
+                    
+                    # Store code analysis in context for use in Phase 1 and Phase 2
+                    # We'll pass this to agents via kwargs
+                    logger.info("  ✅ Code analysis summary generated for use in documentation generation")
+                    results["status"]["code_analysis"] = "complete"
+                    results["code_analysis"] = {
+                        "modules_count": len(code_analysis_result.get('modules', [])),
+                        "classes_count": len(code_analysis_result.get('classes', [])),
+                        "functions_count": len(code_analysis_result.get('functions', []))
+                    }
+                    
+                except Exception as e:
+                    logger.error(f"  ❌ Phase 0 (Code Analysis) failed: {e}", exc_info=True)
+                    results["status"]["code_analysis"] = "failed"
+                    results["code_analysis_error"] = str(e)
+                    # Continue with docs-first mode if code analysis fails
+                    logger.warning("  ⚠️  Continuing with docs-first mode (code analysis failed)")
+                    workflow_mode = "docs_first"
+                    code_analysis_result = None
+                    code_analysis_summary = None
+            
             # --- PHASE 1: FOUNDATIONAL DOCUMENTS (DAG with Quality Gate) ---
             logger.info("=" * 80)
             logger.info("--- PHASE 1: Generating Foundational Documents (DAG with Quality Gate) ---")
@@ -781,12 +856,14 @@ Improvement Suggestions:
                             deps_content[dep_type] = None
                     
                     # Build kwargs for agent.generate_and_save
+                    # Pass code_analysis_summary if available (code-first mode)
                     kwargs = build_kwargs_for_phase1_task(
                         task=task,
                         user_idea=user_idea,
                         project_id=project_id,
                         context_manager=self.context_manager,
-                        deps_content=deps_content
+                        deps_content=deps_content,
+                        code_analysis_summary=code_analysis_summary  # Pass code analysis for code-first mode
                     )
                     
                     # Note: Each Phase 1 agent has its own FileManager with base_dir set to docs/{folder}
@@ -977,6 +1054,7 @@ Improvement Suggestions:
                                 deps_content[dep_type] = None
                     
                     # Build kwargs for agent.generate_and_save (sync function, but fast)
+                    # Pass code_analysis_summary if available (code-first mode)
                     kwargs = build_kwargs_for_task(
                         task=task,
                         coordinator=self,
@@ -985,7 +1063,8 @@ Improvement Suggestions:
                         charter_content=charter_content,
                         project_id=project_id,
                         context_manager=self.context_manager,
-                        deps_content=deps_content
+                        deps_content=deps_content,
+                        code_analysis_summary=code_analysis_summary  # Pass code analysis for code-first mode
                     )
                     
                     # Apply folder prefix to output_filename based on agent type
@@ -1422,10 +1501,11 @@ Improvement Suggestions:
                 "failed_documents": sorted(set(all_failed_docs))
             }
             
-            # --- PHASE 4: CODE ANALYSIS AND DOCUMENTATION UPDATE (Optional) ---
-            if codebase_path:
+            # --- PHASE 4: CODE ANALYSIS AND DOCUMENTATION UPDATE (Optional, Docs-First Mode Only) ---
+            # Note: In code-first mode, code analysis was already done in Phase 0
+            if workflow_mode == "docs_first" and codebase_path:
                 logger.info("=" * 80)
-                logger.info("--- PHASE 4: Code Analysis and Documentation Update ---")
+                logger.info("--- PHASE 4: Code Analysis and Documentation Update (Docs-First Mode) ---")
                 logger.info("=" * 80)
                 logger.info(f"📁 Analyzing codebase at: {codebase_path}")
                 
@@ -1553,6 +1633,8 @@ Improvement Suggestions:
                     logger.error(f"  ❌ Phase 4 (Code Analysis) failed: {e}", exc_info=True)
                     results["status"]["code_analysis"] = "failed"
                     results["code_analysis_error"] = str(e)
+            elif workflow_mode == "code_first":
+                logger.debug("  Phase 4 skipped (code-first mode: code analysis was done in Phase 0)")
             else:
                 logger.debug("  Phase 4 skipped (no codebase_path provided)")
             
@@ -1614,30 +1696,33 @@ Improvement Suggestions:
         user_idea: str,
         project_id: Optional[str] = None,
         profile: str = "team",
-        codebase_path: Optional[str] = None
+        codebase_path: Optional[str] = None,
+        workflow_mode: str = "docs_first"
     ) -> Dict:
         """
         Generate all documentation types asynchronously (async version of generate_all_docs)
         
-        This method uses async operations where possible, falling back to run_in_executor
-        for sync operations. For Phase 2, it uses AsyncParallelExecutor for true async
-        parallel execution.
+        NOTE: Currently, this method wraps the sync version in an executor. For true async
+        performance, this should be refactored to use native async operations throughout.
+        This is a TODO for future optimization.
         
         Args:
             user_idea: User's project idea
             project_id: Optional project ID (generates one if not provided)
             profile: "team" or "individual" - determines which docs to generate
-            codebase_path: Optional path to codebase directory for Phase 4
+            codebase_path: Optional path to codebase directory
+            workflow_mode: "docs_first" (default) or "code_first" - workflow mode
         
         Returns:
             Dict with generated file paths and status
         """
         # For now, run sync version in executor (can be optimized later)
         # This maintains backward compatibility while allowing async callers
+        # TODO: Refactor to use native async operations for better performance
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
-            lambda: self.generate_all_docs(user_idea, project_id, profile, codebase_path)
+            lambda: self.generate_all_docs(user_idea, project_id, profile, codebase_path, workflow_mode)
         )
     
     def get_workflow_status(self, project_id: str) -> Dict:

@@ -179,7 +179,8 @@ def build_kwargs_for_phase1_task(
     user_idea: str,
     project_id: str,
     context_manager: Any,
-    deps_content: Dict[AgentType, str]
+    deps_content: Dict[AgentType, str],
+    code_analysis_summary: Optional[str] = None
 ) -> dict:
     """
     Build keyword arguments for Phase 1 agent.generate_and_save based on task configuration
@@ -258,6 +259,7 @@ def build_kwargs_for_phase1_task(
     
     elif task.kwargs_builder == "with_user_stories":
         # Technical documentation - needs requirements and user stories
+        # In code-first mode, also uses code_analysis_summary
         context = context_manager.get_shared_context(project_id)
         if not context or not context.requirements:
             raise ValueError("Requirements not found for technical documentation")
@@ -270,12 +272,18 @@ def build_kwargs_for_phase1_task(
             if user_stories_output:
                 user_stories_content = user_stories_output.content
         
-        return {
+        kwargs = {
             **base_kwargs,
             "requirements_summary": req_summary,
             "user_stories_summary": user_stories_content,
             "pm_summary": None  # PM doc is in Phase 2
         }
+        
+        # Add code analysis summary if available (code-first mode)
+        if code_analysis_summary:
+            kwargs["code_analysis_summary"] = code_analysis_summary
+        
+        return kwargs
     
     elif task.kwargs_builder == "with_technical":
         # Database schema - needs requirements and technical documentation
@@ -309,7 +317,8 @@ def build_kwargs_for_task(
     charter_content: Optional[str],
     project_id: str,
     context_manager: Any,
-    deps_content: Dict[AgentType, str]
+    deps_content: Dict[AgentType, str],
+    code_analysis_summary: Optional[str] = None
 ) -> dict:
     """
     Build keyword arguments for agent.generate_and_save based on task configuration
@@ -368,25 +377,39 @@ def build_kwargs_for_task(
     
     elif task.kwargs_builder == "with_db_schema":
         # Task that needs requirements, technical, and database schema
+        # In code-first mode, also uses code_analysis_summary
         db_schema_summary = deps_content.get(AgentType.DATABASE_SCHEMA)
-        return {
+        kwargs = {
             **base_kwargs,
             "requirements_summary": req_summary,
             "technical_summary": technical_summary,
             "database_schema_summary": db_schema_summary
         }
+        
+        # Add code analysis summary if available (code-first mode)
+        if code_analysis_summary:
+            kwargs["code_analysis_summary"] = code_analysis_summary
+        
+        return kwargs
     
     elif task.kwargs_builder == "with_api_and_db":
         # Task that needs requirements, technical, API documentation, and database schema
+        # In code-first mode, also uses code_analysis_summary
         api_summary = deps_content.get(AgentType.API_DOCUMENTATION)
         db_schema_summary = deps_content.get(AgentType.DATABASE_SCHEMA)
-        return {
+        kwargs = {
             **base_kwargs,
             "requirements_summary": req_summary,
             "technical_summary": technical_summary,
             "api_summary": api_summary,
             "database_schema_summary": db_schema_summary
         }
+        
+        # Add code analysis summary if available (code-first mode)
+        if code_analysis_summary:
+            kwargs["code_analysis_summary"] = code_analysis_summary
+        
+        return kwargs
     
     elif task.kwargs_builder == "with_pm":
         # Task that needs requirements and PM documentation

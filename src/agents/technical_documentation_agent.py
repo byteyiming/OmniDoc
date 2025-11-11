@@ -49,7 +49,8 @@ class TechnicalDocumentationAgent(BaseAgent):
         self,
         requirements_summary: dict,
         user_stories_summary: Optional[str] = None,
-        pm_summary: Optional[str] = None
+        pm_summary: Optional[str] = None,
+        code_analysis_summary: Optional[str] = None
     ) -> str:
         """
         Generate technical documentation from requirements and Level 2 outputs
@@ -59,12 +60,19 @@ class TechnicalDocumentationAgent(BaseAgent):
                 Should contain: user_idea, project_overview, core_features, technical_requirements
             user_stories_summary: Optional User Stories content (Level 2 output)
             pm_summary: Optional PM Documentation content (Level 2 output)
+            code_analysis_summary: Optional code analysis summary (for code-first mode)
+                                  Contains analyzed codebase structure, classes, functions, etc.
         
         Returns:
             Generated technical documentation (Markdown)
         """
         # Get prompt from centralized prompts config
-        full_prompt = get_technical_prompt(requirements_summary, user_stories_summary, pm_summary)
+        full_prompt = get_technical_prompt(
+            requirements_summary, 
+            user_stories_summary, 
+            pm_summary,
+            code_analysis_summary=code_analysis_summary
+        )
         
         
         stats = self.get_stats()
@@ -80,24 +88,39 @@ class TechnicalDocumentationAgent(BaseAgent):
         requirements_summary: dict,
         user_stories_summary: Optional[str] = None,
         pm_summary: Optional[str] = None,
+        code_analysis_summary: Optional[str] = None,
         output_filename: str = "technical_spec.md",
         project_id: Optional[str] = None,
-        context_manager: Optional[ContextManager] = None
+        context_manager: Optional[ContextManager] = None,
+        **kwargs
     ) -> str:
         """
         Generate technical documentation and save to file
         
         Args:
             requirements_summary: Summary from Requirements Analyst
+            user_stories_summary: Optional User Stories content
+            pm_summary: Optional PM Documentation content
+            code_analysis_summary: Optional code analysis summary (for code-first mode)
             output_filename: Filename to save
             project_id: Project ID for context sharing
             context_manager: Context manager for saving
+            **kwargs: Additional arguments (for compatibility)
             
         Returns:
             Absolute path to saved file
         """
+        # Extract code_analysis_summary from kwargs if not provided directly
+        if code_analysis_summary is None:
+            code_analysis_summary = kwargs.get("code_analysis_summary")
+        
         # Generate documentation
-        technical_doc = self.generate(requirements_summary, user_stories_summary, pm_summary)
+        technical_doc = self.generate(
+            requirements_summary, 
+            user_stories_summary, 
+            pm_summary,
+            code_analysis_summary=code_analysis_summary
+        )
         
         # Save to file
         try:

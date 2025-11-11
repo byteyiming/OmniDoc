@@ -114,7 +114,8 @@ class GenerationRequest(BaseModel):
     project_id: Optional[str] = None
     profile: Optional[str] = "team"  # "team" or "individual"
     provider_name: Optional[str] = None  # LLM provider: "ollama", "gemini", "openai" (uses env var if None)
-    codebase_path: Optional[str] = None  # Optional path to codebase for code analysis (Phase 4)
+    codebase_path: Optional[str] = None  # Optional path to codebase for code analysis
+    workflow_mode: Optional[str] = "docs_first"  # "docs_first" or "code_first" - workflow mode
 
 
 class GenerationResponse(BaseModel):
@@ -769,8 +770,9 @@ async def run_generation_async(
         
         # Use async version if available, otherwise run sync in executor
         if hasattr(local_coordinator, 'async_generate_all_docs'):
+            workflow_mode = request.workflow_mode or "docs_first"
             results = await local_coordinator.async_generate_all_docs(
-                user_idea, project_id, profile, codebase_path=codebase_path
+                user_idea, project_id, profile, codebase_path=codebase_path, workflow_mode=workflow_mode
             )
         else:
             # Fallback: run sync version in executor
@@ -778,7 +780,7 @@ async def run_generation_async(
             results = await loop.run_in_executor(
                 None,
                 lambda: local_coordinator.generate_all_docs(
-                    user_idea, project_id, profile, codebase_path=codebase_path
+                    user_idea, project_id, profile, codebase_path=codebase_path, workflow_mode=request.workflow_mode or "docs_first"
                 )
             )
         
@@ -813,18 +815,20 @@ def run_generation(
                 context_manager=local_context_manager,
                 provider_name=provider_name
             )
+            workflow_mode = request.workflow_mode or "docs_first"
             results = local_coordinator.generate_all_docs(
-                user_idea, project_id, profile, codebase_path=codebase_path
+                user_idea, project_id, profile, codebase_path=codebase_path, workflow_mode=workflow_mode
             )
         else:
+            workflow_mode = request.workflow_mode or "docs_first"
             if coordinator:
                 results = coordinator.generate_all_docs(
-                    user_idea, project_id, profile, codebase_path=codebase_path
+                    user_idea, project_id, profile, codebase_path=codebase_path, workflow_mode=workflow_mode
                 )
             else:
                 local_coordinator = WorkflowCoordinator(context_manager=local_context_manager)
                 results = local_coordinator.generate_all_docs(
-                    user_idea, project_id, profile, codebase_path=codebase_path
+                    user_idea, project_id, profile, codebase_path=codebase_path, workflow_mode=workflow_mode
                 )
         
         local_context_manager.update_project_status(

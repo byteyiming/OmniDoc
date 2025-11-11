@@ -50,7 +50,8 @@ class APIDocumentationAgent(BaseAgent):
         self, 
         requirements_summary: dict, 
         technical_summary: Optional[str] = None,
-        database_schema_summary: Optional[str] = None
+        database_schema_summary: Optional[str] = None,
+        code_analysis_summary: Optional[str] = None
     ) -> str:
         """
         Generate API documentation from requirements and technical specs
@@ -59,12 +60,19 @@ class APIDocumentationAgent(BaseAgent):
             requirements_summary: Summary from Requirements Analyst
             technical_summary: Optional technical documentation summary
             database_schema_summary: Optional database schema summary with detailed SQL schemas
+            code_analysis_summary: Optional code analysis summary (for code-first mode)
+                                  Contains analyzed codebase structure, classes, functions, etc.
         
         Returns:
             Generated API documentation (Markdown)
         """
         # Get prompt from centralized prompts config
-        full_prompt = get_api_prompt(requirements_summary, technical_summary, database_schema_summary)
+        full_prompt = get_api_prompt(
+            requirements_summary, 
+            technical_summary, 
+            database_schema_summary,
+            code_analysis_summary=code_analysis_summary
+        )
         
         try:
             api_doc = self._call_llm(full_prompt)
@@ -76,7 +84,8 @@ class APIDocumentationAgent(BaseAgent):
         self, 
         requirements_summary: dict, 
         technical_summary: Optional[str] = None,
-        database_schema_summary: Optional[str] = None
+        database_schema_summary: Optional[str] = None,
+        code_analysis_summary: Optional[str] = None
     ) -> str:
         """
         Generate API documentation from requirements and technical specs (async)
@@ -87,12 +96,18 @@ class APIDocumentationAgent(BaseAgent):
             requirements_summary: Summary from Requirements Analyst
             technical_summary: Optional technical documentation summary
             database_schema_summary: Optional database schema summary with detailed SQL schemas
+            code_analysis_summary: Optional code analysis summary (for code-first mode)
         
         Returns:
             Generated API documentation (Markdown)
         """
         # Get prompt from centralized prompts config
-        full_prompt = get_api_prompt(requirements_summary, technical_summary, database_schema_summary)
+        full_prompt = get_api_prompt(
+            requirements_summary, 
+            technical_summary, 
+            database_schema_summary,
+            code_analysis_summary=code_analysis_summary
+        )
         
         try:
             # Use async LLM call for better performance
@@ -106,9 +121,11 @@ class APIDocumentationAgent(BaseAgent):
         requirements_summary: dict,
         technical_summary: Optional[str] = None,
         database_schema_summary: Optional[str] = None,
+        code_analysis_summary: Optional[str] = None,
         output_filename: str = "api_documentation.md",
         project_id: Optional[str] = None,
-        context_manager: Optional[ContextManager] = None
+        context_manager: Optional[ContextManager] = None,
+        **kwargs
     ) -> str:
         """
         Generate API documentation and save to file (sync version)
@@ -124,8 +141,17 @@ class APIDocumentationAgent(BaseAgent):
         Returns:
             Absolute path to saved file
         """
+        # Extract code_analysis_summary from kwargs if not provided directly
+        if code_analysis_summary is None:
+            code_analysis_summary = kwargs.get("code_analysis_summary")
+        
         # Generate documentation
-        api_doc = self.generate(requirements_summary, technical_summary, database_schema_summary)
+        api_doc = self.generate(
+            requirements_summary, 
+            technical_summary, 
+            database_schema_summary,
+            code_analysis_summary=code_analysis_summary
+        )
         
         # Save to file
         try:
@@ -153,9 +179,11 @@ class APIDocumentationAgent(BaseAgent):
         requirements_summary: dict,
         technical_summary: Optional[str] = None,
         database_schema_summary: Optional[str] = None,
+        code_analysis_summary: Optional[str] = None,
         output_filename: str = "api_documentation.md",
         project_id: Optional[str] = None,
-        context_manager: Optional[ContextManager] = None
+        context_manager: Optional[ContextManager] = None,
+        **kwargs
     ) -> str:
         """
         Generate API documentation and save to file (async version)
@@ -164,16 +192,27 @@ class APIDocumentationAgent(BaseAgent):
             requirements_summary: Summary from Requirements Analyst
             technical_summary: Optional technical documentation summary
             database_schema_summary: Optional database schema summary with detailed SQL schemas
+            code_analysis_summary: Optional code analysis summary (for code-first mode)
             output_filename: Filename to save
             project_id: Project ID for context sharing
             context_manager: Context manager for saving
+            **kwargs: Additional arguments (for compatibility)
             
         Returns:
             Absolute path to saved file
         """
         import asyncio
+        # Extract code_analysis_summary from kwargs if not provided directly
+        if code_analysis_summary is None:
+            code_analysis_summary = kwargs.get("code_analysis_summary")
+        
         # Generate documentation (async)
-        api_doc = await self.async_generate(requirements_summary, technical_summary, database_schema_summary)
+        api_doc = await self.async_generate(
+            requirements_summary, 
+            technical_summary, 
+            database_schema_summary,
+            code_analysis_summary=code_analysis_summary
+        )
         
         # Save to file (file I/O is fast, but we can make it async too if needed)
         loop = asyncio.get_event_loop()
