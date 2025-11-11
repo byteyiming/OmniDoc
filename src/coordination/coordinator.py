@@ -1700,11 +1700,17 @@ Improvement Suggestions:
         workflow_mode: str = "docs_first"
     ) -> Dict:
         """
-        Generate all documentation types asynchronously (async version of generate_all_docs)
+        Generate all documentation types asynchronously (native async implementation)
         
-        NOTE: Currently, this method wraps the sync version in an executor. For true async
-        performance, this should be refactored to use native async operations throughout.
-        This is a TODO for future optimization.
+        This is a native async implementation that uses async operations throughout:
+        - Phase 0: Code analysis (if code-first mode) - runs in executor (I/O bound)
+        - Phase 1: DAG-based parallel execution with quality gates - uses AsyncParallelExecutor
+        - Phase 2: DAG-based parallel execution - uses AsyncParallelExecutor
+        - Phase 3: Final packaging (cross-ref, review, convert) - uses async I/O
+        - Phase 4: Code analysis (if docs-first mode) - runs in executor (I/O bound)
+        
+        This method provides better performance than the sync version when called from
+        async contexts (e.g., FastAPI endpoints) by avoiding thread pool overhead.
         
         Args:
             user_idea: User's project idea
@@ -1716,14 +1722,833 @@ Improvement Suggestions:
         Returns:
             Dict with generated file paths and status
         """
-        # For now, run sync version in executor (can be optimized later)
-        # This maintains backward compatibility while allowing async callers
-        # TODO: Refactor to use native async operations for better performance
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            lambda: self.generate_all_docs(user_idea, project_id, profile, codebase_path, workflow_mode)
-        )
+        # --- SETUP ---
+        if not project_id:
+            project_id = f"project_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        
+        workflow_mode = workflow_mode.lower()
+        if workflow_mode not in ["docs_first", "code_first"]:
+            logger.warning(f"Invalid workflow_mode '{workflow_mode}', using 'docs_first'")
+            workflow_mode = "docs_first"
+        
+        logger.info(f"🚀 Starting HYBRID Workflow (Async) - Project ID: {project_id}, Profile: {profile}, Mode: {workflow_mode}")
+        
+        results = {
+            "project_id": project_id,
+            "user_idea": user_idea,
+            "profile": profile,
+            "workflow_mode": workflow_mode,
+            "files": {},
+            "status": {}
+        }
+        
+        # Store final, high-quality document content
+        final_docs = {}
+        document_file_paths = {}
+        
+        # Store code analysis results (for code-first mode)
+        code_analysis_result = None
+        code_analysis_summary = None
+        
+        try:
+            # --- PHASE 0: CODE ANALYSIS (Code-First Mode) ---
+            if workflow_mode == "code_first" and codebase_path:
+                logger.info("=" * 80)
+                logger.info("--- PHASE 0: Code Analysis (Code-First Mode) ---")
+                logger.info("=" * 80)
+                logger.info(f"📁 Analyzing codebase at: {codebase_path}")
+                
+                try:
+                    # Analyze codebase (I/O bound, run in executor)
+                    logger.info("🔍 Analyzing codebase structure...")
+                    loop = asyncio.get_event_loop()
+                    code_analysis_result = await loop.run_in_executor(
+                        None,
+                        lambda: self.code_analyst.analyze_codebase(codebase_path)
+                    )
+                    logger.info(f"  ✅ Code analysis complete: {len(code_analysis_result.get('modules', []))} modules, "
+                              f"{len(code_analysis_result.get('classes', []))} classes, "
+                              f"{len(code_analysis_result.get('functions', []))} functions")
+                    
+                    # Generate code analysis summary for use in documentation
+                    code_analysis_summary = f"""
+# Codebase Analysis Summary
+
+## Modules Analyzed: {len(code_analysis_result.get('modules', []))}
+## Classes Found: {len(code_analysis_result.get('classes', []))}
+## Functions Found: {len(code_analysis_result.get('functions', []))}
+
+## Key Classes:
+"""
+                    for cls in code_analysis_result.get('classes', [])[:20]:  # Limit to first 20
+                        code_analysis_summary += f"""
+### {cls.get('name', 'Unknown')} (in {cls.get('file', 'unknown')})
+- Docstring: {cls.get('docstring', 'No docstring')}
+- Methods: {len(cls.get('methods', []))}
+- Bases: {', '.join(cls.get('bases', []))}
+"""
+                    
+                    code_analysis_summary += "\n## Key Functions:\n"
+                    for func in code_analysis_result.get('functions', [])[:20]:  # Limit to first 20
+                        code_analysis_summary += f"""
+### {func.get('name', 'Unknown')} (in {func.get('file', 'unknown')})
+- Docstring: {func.get('docstring', 'No docstring')}
+- Args: {', '.join(func.get('args', []))}
+"""
+                    
+                    # Store code analysis in context for use in Phase 1 and Phase 2
+                    logger.info("  ✅ Code analysis summary generated for use in documentation generation")
+                    results["status"]["code_analysis"] = "complete"
+                    results["code_analysis"] = {
+                        "modules_count": len(code_analysis_result.get('modules', [])),
+                        "classes_count": len(code_analysis_result.get('classes', [])),
+                        "functions_count": len(code_analysis_result.get('functions', []))
+                    }
+                    
+                except Exception as e:
+                    logger.error(f"  ❌ Phase 0 (Code Analysis) failed: {e}", exc_info=True)
+                    results["status"]["code_analysis"] = "failed"
+                    results["code_analysis_error"] = str(e)
+                    # Continue with docs-first mode if code analysis fails
+                    logger.warning("  ⚠️  Continuing with docs-first mode (code analysis failed)")
+                    workflow_mode = "docs_first"
+                    code_analysis_result = None
+                    code_analysis_summary = None
+            
+            # --- PHASE 1: FOUNDATIONAL DOCUMENTS (DAG with Quality Gate) ---
+            logger.info("=" * 80)
+            logger.info("--- PHASE 1: Generating Foundational Documents (DAG with Quality Gate) ---")
+            logger.info("=" * 80)
+            
+            # Get Phase 1 task configurations from DAG
+            phase1_tasks = get_phase1_tasks_for_profile(profile=profile)
+            logger.info(f"📋 Phase 1 DAG: {len(phase1_tasks)} tasks for profile '{profile}'")
+            
+            # Build dependency map
+            phase1_dependency_map = build_phase1_task_dependencies(phase1_tasks)
+            
+            # Create async executor for Phase 1
+            executor = AsyncParallelExecutor(max_workers=4)  # Smaller pool for Phase 1
+            
+            # Create async task execution coroutines for each Phase 1 task
+            def create_phase1_task_coro(task: Phase1Task):
+                """Create an async task coroutine that executes Phase 1 task with quality gate"""
+                async def execute_phase1_task():
+                    # Get dependencies from context (AsyncParallelExecutor ensures dependencies are completed first)
+                    deps_content: Dict[AgentType, str] = {}
+                    
+                    for dep_type in task.dependencies:
+                        dep_type_capture = dep_type
+                        # Context manager calls are sync, so run in executor
+                        loop = asyncio.get_event_loop()
+                        dep_output = await loop.run_in_executor(
+                            None,
+                            lambda dt=dep_type_capture: self.context_manager.get_agent_output(project_id, dt)
+                        )
+                        if dep_output:
+                            deps_content[dep_type] = dep_output.content
+                        else:
+                            # Optional dependencies (like PROJECT_CHARTER for individual profile) may be None
+                            logger.debug(f"  ℹ️  Phase 1 dependency {dep_type.value} not found in context for {task.task_id} (may be optional)")
+                            deps_content[dep_type] = None
+                    
+                    # Build kwargs for agent.generate_and_save
+                    # Pass code_analysis_summary if available (code-first mode)
+                    kwargs = build_kwargs_for_phase1_task(
+                        task=task,
+                        user_idea=user_idea,
+                        project_id=project_id,
+                        context_manager=self.context_manager,
+                        deps_content=deps_content,
+                        code_analysis_summary=code_analysis_summary  # Pass code analysis for code-first mode
+                    )
+                    
+                    # Get agent instance
+                    agent = get_agent_for_phase1_task(self, task.agent_type)
+                    if not agent:
+                        raise ValueError(f"Agent not found for {task.agent_type.value}")
+                    
+                    # Execute with quality gate (async version)
+                    logger.info(f"🔍 Executing Phase 1 task {task.task_id} with quality gate (threshold: {task.quality_threshold})...")
+                    file_path, content = await self._async_run_agent_with_quality_loop(
+                        agent_instance=agent,
+                        agent_type=task.agent_type,
+                        generate_kwargs=kwargs,
+                        output_filename=None,  # Will be extracted from kwargs
+                        project_id=None,  # Will be extracted from kwargs
+                        quality_threshold=task.quality_threshold
+                    )
+                    
+                    # Result is automatically saved to context by _async_run_agent_with_quality_loop
+                    logger.info(f"✅ Phase 1 task {task.task_id} completed: {len(content)} characters")
+                    return file_path, content
+                
+                return execute_phase1_task
+            
+            # Add all Phase 1 tasks to async executor
+            for task in phase1_tasks:
+                task_coro = create_phase1_task_coro(task)()
+                dep_task_ids = phase1_dependency_map.get(task.task_id, [])
+                
+                executor.add_task(
+                    task_id=task.task_id,
+                    coro=task_coro,
+                    dependencies=dep_task_ids
+                )
+                logger.debug(f"  📝 Added Phase 1 async task: {task.task_id} (depends on: {dep_task_ids}, quality_threshold: {task.quality_threshold})")
+            
+            # Execute Phase 1 tasks asynchronously with dependency resolution (native async)
+            logger.info("🚀 Executing Phase 1 tasks in parallel (respecting dependencies)...")
+            phase1_task_results = await executor.execute()
+            
+            # Process Phase 1 results and update results dictionary
+            req_content = None
+            charter_content = None
+            stories_content = None
+            tech_content = None
+            db_content = None
+            
+            for task in phase1_tasks:
+                task_result = phase1_task_results.get(task.task_id)
+                if task_result:
+                    if isinstance(task_result, tuple) and len(task_result) == 2:
+                        file_path, content = task_result
+                    else:
+                        # Handle case where result might be different format
+                        logger.warning(f"Unexpected result format for {task.task_id}: {type(task_result)}")
+                        continue
+                    
+                    # Update results dictionary
+                    if task.agent_type == AgentType.REQUIREMENTS_ANALYST:
+                        results["files"]["requirements"] = file_path
+                        results["status"]["requirements"] = "complete_v2"
+                        req_content = content
+                    elif task.agent_type == AgentType.PROJECT_CHARTER:
+                        results["files"]["project_charter"] = file_path
+                        results["status"]["project_charter"] = "complete_v2"
+                        charter_content = content
+                    elif task.agent_type == AgentType.USER_STORIES:
+                        results["files"]["user_stories"] = file_path
+                        results["status"]["user_stories"] = "complete_v2"
+                        stories_content = content
+                    elif task.agent_type == AgentType.TECHNICAL_DOCUMENTATION:
+                        results["files"]["technical_documentation"] = file_path
+                        results["status"]["technical_documentation"] = "complete_v2"
+                        tech_content = content
+                    elif task.agent_type == AgentType.DATABASE_SCHEMA:
+                        results["files"]["database_schema"] = file_path
+                        results["status"]["database_schema"] = "complete_v2"
+                        db_content = content
+                    
+                    final_docs[task.agent_type] = content
+                    document_file_paths[task.agent_type] = file_path
+                else:
+                    logger.error(f"❌ Phase 1 task {task.task_id} failed or returned no result")
+                    # Mark as failed in status
+                    doc_type_map = {
+                        AgentType.REQUIREMENTS_ANALYST: "requirements",
+                        AgentType.PROJECT_CHARTER: "project_charter",
+                        AgentType.USER_STORIES: "user_stories",
+                        AgentType.TECHNICAL_DOCUMENTATION: "technical_documentation",
+                        AgentType.DATABASE_SCHEMA: "database_schema",
+                    }
+                    doc_type = doc_type_map.get(task.agent_type, task.agent_type.value)
+                    results["status"][doc_type] = "failed"
+            
+            # Verify requirements were generated
+            if not req_content:
+                raise ValueError("Requirements not generated in Phase 1")
+            
+            # Get requirements summary from context (async)
+            loop = asyncio.get_event_loop()
+            context = await loop.run_in_executor(
+                None,
+                lambda: self.context_manager.get_shared_context(project_id)
+            )
+            if not context.requirements:
+                raise ValueError("Requirements not found in context after generation")
+            
+            req_summary = context.get_requirements_summary()
+            
+            logger.info("=" * 80)
+            logger.info("✅ PHASE 1 COMPLETE: Foundational documents generated with quality gates (DAG)")
+            logger.info("=" * 80)
+            
+            # Get technical summary and database schema for Phase 2
+            technical_summary = tech_content
+            database_schema_summary = db_content
+            
+            # --- PHASE 2: PARALLEL GENERATION (DAG-based) ---
+            logger.info("=" * 80)
+            logger.info("--- PHASE 2: Generating Secondary Documents (Parallel DAG) ---")
+            logger.info("=" * 80)
+            
+            # Get Phase 2 task configurations from DAG
+            phase2_tasks = get_phase2_tasks_for_profile(profile=profile)
+            logger.info(f"📋 Phase 2 DAG: {len(phase2_tasks)} tasks for profile '{profile}'")
+            
+            # Build dependency map (AgentType -> task_id dependencies)
+            dependency_map = build_task_dependencies(phase2_tasks)
+            
+            # Prepare Phase 1 content for dependency extraction
+            phase1_deps_content = {
+                AgentType.REQUIREMENTS_ANALYST: req_content,
+                AgentType.TECHNICAL_DOCUMENTATION: technical_summary,
+                AgentType.DATABASE_SCHEMA: database_schema_summary,
+                AgentType.PROJECT_CHARTER: charter_content if charter_content else None,
+                AgentType.USER_STORIES: stories_content,
+            }
+            
+            # Create async executor for Phase 2
+            executor = AsyncParallelExecutor(max_workers=8)
+            
+            # Create async task execution coroutines for each Phase 2 task
+            def create_async_task_coro(task: Phase2Task):
+                """Create an async task coroutine that extracts dependencies and executes agent"""
+                async def execute_async_task():
+                    # Extract dependency content from context (for Phase 2 dependencies)
+                    deps_content = phase1_deps_content.copy()
+                    
+                    # Get Phase 2 dependencies from context (async-safe)
+                    loop = asyncio.get_event_loop()
+                    for dep_type in task.dependencies:
+                        if dep_type not in deps_content:
+                            dep_type_capture = dep_type
+                            dep_output = await loop.run_in_executor(
+                                None,
+                                lambda dt=dep_type_capture: self.context_manager.get_agent_output(project_id, dt)
+                            )
+                            if dep_output:
+                                deps_content[dep_type] = dep_output.content
+                            else:
+                                logger.warning(f"  ⚠️  Dependency {dep_type.value} not found in context for {task.task_id}")
+                                deps_content[dep_type] = None
+                    
+                    # Build kwargs for agent.generate_and_save
+                    kwargs = build_kwargs_for_task(
+                        task=task,
+                        coordinator=self,
+                        req_summary=req_summary,
+                        technical_summary=technical_summary,
+                        charter_content=charter_content,
+                        project_id=project_id,
+                        context_manager=self.context_manager,
+                        deps_content=deps_content,
+                        code_analysis_summary=code_analysis_summary  # Pass code analysis for code-first mode
+                    )
+                    
+                    # Apply folder prefix to output_filename based on agent type
+                    if "output_filename" in kwargs:
+                        kwargs["output_filename"] = get_output_filename_for_agent(task.agent_type, kwargs["output_filename"])
+                    
+                    # Get agent instance
+                    agent = get_agent_for_task(self, task.agent_type)
+                    if not agent:
+                        raise ValueError(f"Agent not found for {task.agent_type.value}")
+                    
+                    # Execute agent.generate_and_save (async if available, otherwise sync in executor)
+                    if hasattr(agent, 'async_generate_and_save') and asyncio.iscoroutinefunction(agent.async_generate_and_save):
+                        # Native async method (best performance)
+                        result = await agent.async_generate_and_save(**kwargs)
+                    elif hasattr(agent, 'generate_and_save') and asyncio.iscoroutinefunction(agent.generate_and_save):
+                        # Async generate_and_save method
+                        result = await agent.generate_and_save(**kwargs)
+                    else:
+                        # Fallback: run sync method in executor
+                        result = await loop.run_in_executor(
+                            None,
+                            lambda kw=kwargs: agent.generate_and_save(**kw)
+                        )
+                    return result
+                
+                return execute_async_task
+            
+            # Add all tasks to async executor
+            for task in phase2_tasks:
+                task_coro = create_async_task_coro(task)()
+                dep_task_ids = dependency_map.get(task.task_id, [])
+                
+                executor.add_task(
+                    task_id=task.task_id,
+                    coro=task_coro,
+                    dependencies=dep_task_ids
+                )
+                logger.debug(f"  📝 Added async task: {task.task_id} (depends on: {dep_task_ids})")
+            
+            # Execute parallel tasks asynchronously (native async)
+            logger.info(f"🚀 Executing {len(executor.tasks)} parallel async tasks with DAG dependencies...")
+            parallel_results = await executor.execute()
+            
+            # Collect parallel task results with resilient error handling
+            successful_tasks = []
+            failed_tasks = []
+            
+            for task in phase2_tasks:
+                task_id = task.task_id
+                file_path = parallel_results.get(task_id)
+                agent_type = task.agent_type
+                doc_type = get_doc_type_from_agent_type(agent_type)
+                
+                # Check task status from executor
+                task_status = executor.tasks.get(task_id)
+                if task_status and task_status.status == AsyncTaskStatus.FAILED:
+                    # Task failed - record error but continue processing other tasks
+                    error = task_status.error if task_status.error else "Unknown error"
+                    error_msg = str(error) if error else "Unknown error"
+                    logger.error(f"  ❌ Task {task_id} ({doc_type}) failed: {error_msg}")
+                    results["status"][doc_type] = "failed"
+                    failed_tasks.append({
+                        "task_id": task_id,
+                        "doc_type": doc_type,
+                        "agent_type": agent_type.value,
+                        "error": error_msg
+                    })
+                elif file_path and task_status and task_status.status == AsyncTaskStatus.COMPLETE:
+                    # Task succeeded
+                    results["files"][doc_type] = file_path
+                    results["status"][doc_type] = "complete"
+                    
+                    # Read content and add to final_docs (async I/O)
+                    try:
+                        loop = asyncio.get_event_loop()
+                        content = await loop.run_in_executor(
+                            None,
+                            lambda fp=file_path: self.file_manager.read_file(fp)
+                        )
+                        final_docs[agent_type] = content
+                        document_file_paths[agent_type] = file_path
+                        logger.info(f"  ✅ {doc_type}: {file_path}")
+                        successful_tasks.append({
+                            "task_id": task_id,
+                            "doc_type": doc_type,
+                            "agent_type": agent_type.value,
+                            "file_path": file_path
+                        })
+                    except Exception as e:
+                        logger.warning(f"  ⚠️  Could not read {doc_type}: {e}")
+                        results["status"][doc_type] = "failed"
+                        failed_tasks.append({
+                            "task_id": task_id,
+                            "doc_type": doc_type,
+                            "agent_type": agent_type.value,
+                            "error": f"Failed to read file: {str(e)}"
+                        })
+                else:
+                    # Task status unknown or incomplete
+                    logger.warning(f"  ⚠️  Task {task_id} ({doc_type}) has unknown status")
+                    results["status"][doc_type] = "unknown"
+                    failed_tasks.append({
+                        "task_id": task_id,
+                        "doc_type": doc_type,
+                        "agent_type": agent_type.value,
+                        "error": "Task status unknown or incomplete"
+                    })
+            
+            # Log Phase 2 summary with success/failure breakdown
+            logger.info("=" * 80)
+            logger.info(f"✅ PHASE 2 COMPLETE: {len(successful_tasks)}/{len(phase2_tasks)} documents generated successfully")
+            if successful_tasks:
+                logger.info(f"   ✅ Successful: {', '.join([t['doc_type'] for t in successful_tasks])}")
+            if failed_tasks:
+                logger.warning(f"   ❌ Failed: {', '.join([t['doc_type'] for t in failed_tasks])}")
+                for failed_task in failed_tasks:
+                    logger.warning(f"      - {failed_task['doc_type']}: {failed_task.get('error', 'Unknown error')}")
+            logger.info("=" * 80)
+            
+            # Store task execution summary in results for Phase 3 reporting
+            results["phase2_summary"] = {
+                "successful": successful_tasks,
+                "failed": failed_tasks,
+                "total": len(phase2_tasks),
+                "success_count": len(successful_tasks),
+                "failed_count": len(failed_tasks)
+            }
+            
+            # --- PHASE 3: FINAL PACKAGING (Cross-ref, Review, Convert) ---
+            logger.info("=" * 80)
+            logger.info("--- PHASE 3: Final Packaging and Conversion ---")
+            logger.info("=" * 80)
+            
+            # 1. Cross-Referencing (async I/O)
+            logger.info("📎 Step 1: Adding cross-references to all documents...")
+            try:
+                loop = asyncio.get_event_loop()
+                referenced_docs = await loop.run_in_executor(
+                    None,
+                    lambda: self.cross_referencer.create_cross_references(
+                        final_docs,
+                        document_file_paths
+                    )
+                )
+                
+                # Save cross-referenced documents back to files (async I/O)
+                updated_count = 0
+                for agent_type, referenced_content in referenced_docs.items():
+                    original_content = final_docs.get(agent_type)
+                    if referenced_content != original_content:
+                        original_file_path = document_file_paths[agent_type]
+                        # Write directly to original absolute path to preserve folder structure (async I/O)
+                        if Path(original_file_path).is_absolute():
+                            await loop.run_in_executor(
+                                None,
+                                lambda fp=original_file_path, cnt=referenced_content: Path(fp).write_text(cnt, encoding='utf-8')
+                            )
+                            logger.debug(f"Updated cross-referenced file: {original_file_path}")
+                        else:
+                            await loop.run_in_executor(
+                                None,
+                                lambda fp=original_file_path, cnt=referenced_content: self.file_manager.write_file(fp, cnt)
+                            )
+                        # Update final_docs for quality review
+                        final_docs[agent_type] = referenced_content
+                        updated_count += 1
+                
+                logger.info(f"  ✅ Added cross-references to {updated_count} documents")
+                
+                # Generate document index (async I/O)
+                try:
+                    loop = asyncio.get_event_loop()
+                    index_content = await loop.run_in_executor(
+                        None,
+                        lambda: self.cross_referencer.generate_document_index(
+                            final_docs,
+                            document_file_paths,
+                            project_name=req_summary.get('project_overview', 'Project')[:50]
+                        )
+                    )
+                    index_path = await loop.run_in_executor(
+                        None,
+                        lambda cnt=index_content: self.file_manager.write_file("index.md", cnt)
+                    )
+                    results["files"]["document_index"] = index_path
+                    logger.info(f"  ✅ Document index created: {index_path}")
+                except Exception as e:
+                    logger.warning(f"  ⚠️  Could not generate index: {e}")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Cross-referencing failed: {e}")
+            
+            # 2. Final Quality Review (generate report only) (async I/O)
+            logger.info("📊 Step 2: Generating final quality review report...")
+            try:
+                # Convert final_docs to dict with string keys for quality reviewer
+                all_documentation_for_review = {
+                    agent_type.value: content
+                    for agent_type, content in final_docs.items()
+                }
+                
+                loop = asyncio.get_event_loop()
+                quality_review_path = await loop.run_in_executor(
+                    None,
+                    lambda: self.quality_reviewer.generate_and_save(
+                        all_documentation=all_documentation_for_review,
+                        output_filename="quality_review.md",
+                        project_id=project_id,
+                        context_manager=self.context_manager
+                    )
+                )
+                results["files"]["quality_review"] = quality_review_path
+                results["status"]["quality_review"] = "complete"
+                logger.info(f"  ✅ Quality review report generated: {quality_review_path}")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Quality review failed: {e}")
+                results["status"]["quality_review"] = "failed"
+            
+            # 3. Claude CLI Documentation (async I/O)
+            logger.info("📝 Step 3: Generating Claude CLI documentation...")
+            try:
+                loop = asyncio.get_event_loop()
+                claude_md_path = await loop.run_in_executor(
+                    None,
+                    lambda: self.claude_cli_agent.generate_and_save(
+                        all_documentation=final_docs,
+                        project_id=project_id,
+                        context_manager=self.context_manager
+                    )
+                )
+                results["files"]["claude_cli_documentation"] = claude_md_path
+                results["status"]["claude_cli_documentation"] = "complete"
+                logger.info(f"  ✅ Claude CLI documentation generated: {claude_md_path}")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Claude CLI documentation generation failed: {e}")
+                results["status"]["claude_cli_documentation"] = "failed"
+            
+            # 4. Format Conversion (async I/O)
+            logger.info("📄 Step 4: Converting documents to multiple formats...")
+            try:
+                # Prepare documents for conversion
+                documents_for_conversion = {
+                    agent_type.value: content
+                    for agent_type, content in final_docs.items()
+                }
+                
+                loop = asyncio.get_event_loop()
+                format_results = await loop.run_in_executor(
+                    None,
+                    lambda: self.format_converter.convert_all_documents(
+                        documents=documents_for_conversion,
+                        formats=["html", "pdf", "docx"],
+                        project_id=project_id,
+                        context_manager=self.context_manager
+                    )
+                )
+                results["files"]["format_conversions"] = format_results
+                
+                # Analyze conversion results to determine overall status
+                total_docs = len(format_results)
+                successful_formats = {}
+                failed_formats = {}
+                
+                for doc_name, doc_results in format_results.items():
+                    for fmt, fmt_result in doc_results.items():
+                        if isinstance(fmt_result, dict) and fmt_result.get("status") == "success":
+                            successful_formats[fmt] = successful_formats.get(fmt, 0) + 1
+                        else:
+                            failed_formats[fmt] = failed_formats.get(fmt, 0) + 1
+                
+                # Count successful conversions
+                total_successful = sum(successful_formats.values())
+                total_attempted = total_docs * 3  # 3 formats per document
+                
+                if total_successful == total_attempted:
+                    results["status"]["format_conversions"] = "complete"
+                    logger.info(f"  ✅ Converted {total_docs} documents to {total_successful} files (HTML, PDF, DOCX)")
+                elif total_successful > 0:
+                    results["status"]["format_conversions"] = f"partial ({total_successful}/{total_attempted} successful)"
+                    logger.info(f"  ⚠️  Format conversion partial: {total_successful}/{total_attempted} successful")
+                    # Log failed formats for debugging
+                    for fmt, count in failed_formats.items():
+                        logger.warning(f"    - {fmt.upper()}: {count} failures")
+                else:
+                    results["status"]["format_conversions"] = "failed"
+                    logger.warning(f"  ❌ Format conversion failed: all {total_attempted} conversions failed")
+                
+                # Store conversion status details for frontend
+                results["format_conversion_status"] = {
+                    "successful": successful_formats,
+                    "failed": failed_formats,
+                    "total_docs": total_docs,
+                    "total_successful": total_successful,
+                    "total_attempted": total_attempted
+                }
+                
+            except Exception as e:
+                logger.error(f"  ❌ Format conversion failed with exception: {e}", exc_info=True)
+                results["status"]["format_conversions"] = "failed"
+                results["format_conversion_status"] = {
+                    "error": str(e),
+                    "successful": {},
+                    "failed": {},
+                    "total_docs": 0,
+                    "total_successful": 0,
+                    "total_attempted": 0
+                }
+            
+            logger.info("=" * 80)
+            logger.info("✅ PHASE 3 COMPLETE: Final packaging and conversion completed")
+            logger.info("=" * 80)
+            
+            # Generate final execution summary report
+            logger.info("=" * 80)
+            logger.info("📊 FINAL EXECUTION SUMMARY")
+            logger.info("=" * 80)
+            
+            # Count successful and failed documents across all phases
+            all_successful_docs = []
+            all_failed_docs = []
+            
+            # Phase 1 documents (from results["status"])
+            phase1_doc_types = ["requirements", "project_charter", "user_stories", "technical_documentation", "database_schema"]
+            for doc_type in phase1_doc_types:
+                if doc_type in results.get("status", {}):
+                    if results["status"][doc_type] == "complete" or results["status"][doc_type] == "complete_v2":
+                        all_successful_docs.append(doc_type)
+                    elif results["status"][doc_type] == "failed":
+                        all_failed_docs.append(doc_type)
+            
+            # Phase 2 documents (from phase2_summary)
+            if "phase2_summary" in results:
+                phase2_summary = results["phase2_summary"]
+                for task in phase2_summary.get("successful", []):
+                    all_successful_docs.append(task["doc_type"])
+                for task in phase2_summary.get("failed", []):
+                    all_failed_docs.append(task["doc_type"])
+            
+            # Phase 3 documents (quality_review, claude_cli_documentation, format_conversions, document_index)
+            phase3_doc_types = ["quality_review", "claude_cli_documentation", "format_conversions", "document_index"]
+            for doc_type in phase3_doc_types:
+                if doc_type in results.get("status", {}):
+                    status = results["status"][doc_type]
+                    if status == "complete" or "partial" in status.lower():
+                        all_successful_docs.append(doc_type)
+                    elif status == "failed" or status == "skipped":
+                        all_failed_docs.append(doc_type)
+            
+            # Log summary
+            total_docs = len(all_successful_docs) + len(all_failed_docs)
+            success_count = len(all_successful_docs)
+            failed_count = len(all_failed_docs)
+            
+            logger.info(f"📈 Total Documents: {total_docs}")
+            logger.info(f"✅ Successful: {success_count} ({success_count/total_docs*100:.1f}%)" if total_docs > 0 else "✅ Successful: 0")
+            logger.info(f"❌ Failed: {failed_count} ({failed_count/total_docs*100:.1f}%)" if total_docs > 0 else "❌ Failed: 0")
+            
+            if all_successful_docs:
+                logger.info(f"   ✅ Generated: {', '.join(sorted(set(all_successful_docs)))}")
+            if all_failed_docs:
+                logger.warning(f"   ❌ Failed: {', '.join(sorted(set(all_failed_docs)))}")
+                # Log detailed error information for failed tasks
+                if "phase2_summary" in results:
+                    for failed_task in results["phase2_summary"].get("failed", []):
+                        logger.warning(f"      - {failed_task['doc_type']}: {failed_task.get('error', 'Unknown error')}")
+            
+            logger.info("=" * 80)
+            
+            # Store final summary in results
+            results["execution_summary"] = {
+                "total_documents": total_docs,
+                "successful_count": success_count,
+                "failed_count": failed_count,
+                "success_rate": success_count / total_docs * 100 if total_docs > 0 else 0,
+                "successful_documents": sorted(set(all_successful_docs)),
+                "failed_documents": sorted(set(all_failed_docs))
+            }
+            
+            # --- PHASE 4: CODE ANALYSIS AND DOCUMENTATION UPDATE (Optional, Docs-First Mode Only) ---
+            # Note: In code-first mode, code analysis was already done in Phase 0
+            if workflow_mode == "docs_first" and codebase_path:
+                logger.info("=" * 80)
+                logger.info("--- PHASE 4: Code Analysis and Documentation Update (Docs-First Mode) ---")
+                logger.info("=" * 80)
+                logger.info(f"📁 Analyzing codebase at: {codebase_path}")
+                
+                try:
+                    # Analyze codebase (I/O bound, run in executor)
+                    logger.info("🔍 Step 1: Analyzing codebase structure...")
+                    loop = asyncio.get_event_loop()
+                    code_analysis = await loop.run_in_executor(
+                        None,
+                        lambda: self.code_analyst.analyze_codebase(codebase_path)
+                    )
+                    logger.info(f"  ✅ Code analysis complete: {len(code_analysis.get('modules', []))} modules, "
+                              f"{len(code_analysis.get('classes', []))} classes, "
+                              f"{len(code_analysis.get('functions', []))} functions")
+                    
+                    # Update API Documentation with code analysis (async I/O)
+                    logger.info("📝 Step 2: Updating API documentation based on actual code...")
+                    try:
+                        # Get existing API documentation
+                        api_doc_content = final_docs.get(AgentType.API_DOCUMENTATION)
+                        
+                        # Generate updated API documentation from code (async I/O)
+                        updated_api_doc = await loop.run_in_executor(
+                            None,
+                            lambda: self.code_analyst.generate_code_documentation(
+                                code_analysis=code_analysis,
+                                existing_docs=api_doc_content
+                            )
+                        )
+                        
+                        # Save updated API documentation (async I/O)
+                        api_doc_path = document_file_paths.get(AgentType.API_DOCUMENTATION)
+                        if api_doc_path:
+                            if Path(api_doc_path).is_absolute():
+                                await loop.run_in_executor(
+                                    None,
+                                    lambda fp=api_doc_path, cnt=updated_api_doc: Path(fp).write_text(cnt, encoding='utf-8')
+                                )
+                            else:
+                                await loop.run_in_executor(
+                                    None,
+                                    lambda fp=api_doc_path, cnt=updated_api_doc: self.file_manager.write_file(fp, cnt)
+                                )
+                            logger.info(f"  ✅ API documentation updated: {api_doc_path}")
+                    except Exception as e:
+                        logger.warning(f"  ⚠️  API documentation update failed: {e}")
+                    
+                    # Update Developer Documentation with code analysis (async I/O)
+                    logger.info("📝 Step 3: Updating developer documentation based on actual code...")
+                    try:
+                        # Get existing developer documentation
+                        dev_doc_content = final_docs.get(AgentType.DEVELOPER_DOCUMENTATION)
+                        
+                        # Generate updated developer documentation from code (async I/O)
+                        updated_dev_doc = await loop.run_in_executor(
+                            None,
+                            lambda: self.code_analyst.generate_code_documentation(
+                                code_analysis=code_analysis,
+                                existing_docs=dev_doc_content
+                            )
+                        )
+                        
+                        # Save updated developer documentation (async I/O)
+                        dev_doc_path = document_file_paths.get(AgentType.DEVELOPER_DOCUMENTATION)
+                        if dev_doc_path:
+                            if Path(dev_doc_path).is_absolute():
+                                await loop.run_in_executor(
+                                    None,
+                                    lambda fp=dev_doc_path, cnt=updated_dev_doc: Path(fp).write_text(cnt, encoding='utf-8')
+                                )
+                            else:
+                                await loop.run_in_executor(
+                                    None,
+                                    lambda fp=dev_doc_path, cnt=updated_dev_doc: self.file_manager.write_file(fp, cnt)
+                                )
+                            logger.info(f"  ✅ Developer documentation updated: {dev_doc_path}")
+                    except Exception as e:
+                        logger.warning(f"  ⚠️  Developer documentation update failed: {e}")
+                    
+                    # Save code analysis results (async I/O)
+                    logger.info("💾 Step 4: Saving code analysis results...")
+                    try:
+                        import json
+                        code_analysis_json = json.dumps(code_analysis, indent=2, default=str)
+                        code_analysis_path = await loop.run_in_executor(
+                            None,
+                            lambda cnt=code_analysis_json: self.file_manager.write_file("code_analysis.json", cnt)
+                        )
+                        results["files"]["code_analysis"] = code_analysis_path
+                        results["status"]["code_analysis"] = "complete"
+                        logger.info(f"  ✅ Code analysis saved: {code_analysis_path}")
+                    except Exception as e:
+                        logger.warning(f"  ⚠️  Failed to save code analysis: {e}")
+                    
+                    logger.info("=" * 80)
+                    logger.info("✅ PHASE 4 COMPLETE: Code analysis and documentation update completed")
+                    logger.info("=" * 80)
+                    
+                except Exception as e:
+                    logger.error(f"  ❌ Phase 4 (Code Analysis) failed: {e}", exc_info=True)
+                    results["status"]["code_analysis"] = "failed"
+                    results["code_analysis_error"] = str(e)
+            elif workflow_mode == "code_first":
+                logger.debug("  Phase 4 skipped (code-first mode: code analysis was done in Phase 0)")
+            else:
+                logger.debug("  Phase 4 skipped (no codebase_path provided)")
+            
+            # Summary
+            logger.info("=" * 80)
+            logger.info(f"🚀 HYBRID Workflow COMPLETED (Async) for project {project_id}")
+            logger.info("=" * 80)
+            
+            # Get documents summary (async I/O)
+            loop = asyncio.get_event_loop()
+            summary = await loop.run_in_executor(
+                None,
+                lambda: get_documents_summary(results["files"])
+            )
+            logger.info(f"Documents organized by level: Level 1: {len(summary['level_1_strategic']['documents'])}, "
+                       f"Level 2: {len(summary['level_2_product']['documents'])}, "
+                       f"Level 3: {len(summary['level_3_technical']['documents'])}, "
+                       f"Cross-Level: {len(summary['cross_level']['documents'])}")
+            
+            results["documents_by_level"] = summary
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"❌ CRITICAL ERROR in HYBRID workflow (async): {str(e)}", exc_info=True)
+            results["error"] = str(e)
+            return results
     
     def get_workflow_status(self, project_id: str) -> Dict:
         """Get current workflow status for a project"""
