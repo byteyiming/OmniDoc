@@ -75,7 +75,9 @@ class DocumentImproverAgent(BaseAgent):
         original_document: str,
         document_type: str,
         quality_feedback: str,
-        focus_areas: Optional[list] = None
+        focus_areas: Optional[list] = None,
+        quality_score: Optional[float] = None,
+        quality_details: Optional[Dict] = None
     ) -> str:
         """
         Improve a document based on quality review feedback
@@ -85,6 +87,8 @@ class DocumentImproverAgent(BaseAgent):
             document_type: Type of document (e.g., "technical_documentation")
             quality_feedback: Quality review feedback and suggestions
             focus_areas: Optional list of specific areas to focus on
+            quality_score: Optional current quality score (0-100)
+            quality_details: Optional quality check details (word_count, sections, readability)
         
         Returns:
             Improved document content
@@ -93,17 +97,66 @@ class DocumentImproverAgent(BaseAgent):
         if focus_areas:
             focus_text = f"\n\nFocus on these specific areas:\n" + "\n".join(f"- {area}" for area in focus_areas)
         
-        prompt = f"""You are a Documentation Improvement Specialist. Your task is to improve a document based on quality review feedback.
+        # Build quality score context
+        score_context = ""
+        if quality_score is not None:
+            score_context = f"\n\nCURRENT QUALITY SCORE: {quality_score:.2f}/100\n"
+            if quality_details:
+                word_count_info = quality_details.get("word_count", {})
+                sections_info = quality_details.get("sections", {})
+                readability_info = quality_details.get("readability", {})
+                
+                score_context += "\nQUALITY METRICS:\n"
+                score_context += f"- Word Count: {word_count_info.get('word_count', 0)} (min: {word_count_info.get('min_threshold', 100)}, passed: {word_count_info.get('passed', False)})\n"
+                score_context += f"- Section Completeness: {sections_info.get('completeness_score', 0):.1f}% ({sections_info.get('found_count', 0)}/{sections_info.get('required_count', 0)} sections found)\n"
+                if sections_info.get('missing_sections'):
+                    missing = sections_info.get('missing_sections', [])[:5]  # Limit to 5
+                    missing_clean = [s.replace('^#+\\s+', '').replace('\\s+', ' ') for s in missing]
+                    score_context += f"  - MISSING SECTIONS: {', '.join(missing_clean)}\n"
+                score_context += f"- Readability: {readability_info.get('readability_score', 0):.1f} ({readability_info.get('level', 'unknown')}, passed: {readability_info.get('passed', False)})\n"
+                
+                score_context += "\nCRITICAL IMPROVEMENT PRIORITIES:\n"
+                if not word_count_info.get('passed', False):
+                    score_context += f"1. INCREASE WORD COUNT: Current {word_count_info.get('word_count', 0)} words, need at least {word_count_info.get('min_threshold', 100)} words\n"
+                    score_context += "   - Expand existing sections with more detail\n"
+                    score_context += "   - Add examples, explanations, and context\n"
+                    score_context += "   - Include more comprehensive coverage of topics\n"
+                
+                if not sections_info.get('passed', False) or sections_info.get('completeness_score', 100) < 80:
+                    score_context += f"2. ADD MISSING SECTIONS: Only {sections_info.get('found_count', 0)}/{sections_info.get('required_count', 0)} sections found\n"
+                    if sections_info.get('missing_sections'):
+                        missing = sections_info.get('missing_sections', [])[:5]
+                        missing_clean = [s.replace('^#+\\s+', '').replace('\\s+', ' ') for s in missing]
+                        score_context += f"   - MUST ADD: {', '.join(missing_clean)}\n"
+                    score_context += "   - Ensure all required sections are present with substantial content\n"
+                
+                if not readability_info.get('passed', False):
+                    score_context += f"3. IMPROVE READABILITY: Current score {readability_info.get('readability_score', 0):.1f}, need at least {readability_info.get('min_threshold', 50):.1f}\n"
+                    score_context += "   - Use simpler sentence structures\n"
+                    score_context += "   - Break up long paragraphs\n"
+                    score_context += "   - Use clearer, more direct language\n"
+                    score_context += "   - Add more examples and explanations\n"
+        
+        prompt = f"""You are a Documentation Improvement Specialist. Your task is to significantly improve a document based on quality review feedback and quality metrics.
 
 CRITICAL INSTRUCTIONS:
-1. Read the original document carefully
+1. Read the original document carefully and identify all issues
 2. Review the quality feedback and improvement suggestions
-3. Generate an IMPROVED version that addresses ALL issues mentioned in the feedback
-4. Ensure the improved document is COMPLETE (no cut-off sections)
-5. Maintain the original structure and style while fixing issues
-6. Add missing content, clarify ambiguous sections, and improve consistency
-7. The output should be a complete, improved version of the document
+3. Analyze the quality metrics to understand what needs improvement
+4. Generate a SIGNIFICANTLY IMPROVED version that addresses ALL issues
+5. The improved document MUST:
+   - Include ALL required sections (if any are missing, add them with substantial content)
+   - Meet or exceed minimum word count requirements (expand content significantly)
+   - Improve readability (use clearer language, simpler sentences)
+   - Address all specific issues mentioned in the feedback
+   - Be complete and comprehensive (no truncated sections)
+   - Maintain professional quality and consistency
+6. Focus on SUBSTANTIVE improvements, not just minor edits
+7. If sections are missing, create them with detailed, high-quality content
+8. If word count is low, expand all sections with more detail, examples, and explanations
+9. If readability is poor, rewrite for clarity while maintaining technical accuracy
 {focus_text}
+{score_context}
 
 === ORIGINAL DOCUMENT ({document_type}) ===
 
@@ -115,12 +168,16 @@ CRITICAL INSTRUCTIONS:
 
 === YOUR TASK ===
 
-Generate a complete, improved version of the document that addresses all issues mentioned in the quality feedback. 
-The improved document should:
-- Be complete (no truncated sections)
-- Address all specific issues mentioned in the feedback
-- Maintain professional quality and consistency
-- Include all necessary details and explanations
+Generate a COMPLETE, SIGNIFICANTLY IMPROVED version of the document that:
+1. Addresses ALL issues mentioned in the quality feedback
+2. Meets ALL quality metric requirements (word count, sections, readability)
+3. Includes ALL missing sections with substantial, high-quality content
+4. Expands existing sections with more detail, examples, and explanations
+5. Improves clarity and readability throughout
+6. Maintains professional quality and technical accuracy
+7. Is comprehensive and complete (no truncated sections)
+
+IMPORTANT: This is a COMPLETE REWRITE focused on quality improvement. Do not just make minor edits - make substantial improvements to address all quality issues.
 
 Start directly with the improved document content (no preamble):"""
         

@@ -271,6 +271,7 @@ class WorkflowCoordinator:
         # 2. CHECK V1 QUALITY
         logger.info(f"  🔍 Step 2: Checking V1 quality for {agent_type.value}...")
         score = 0
+        quality_result_v1 = None  # Initialize to ensure it's in scope
         try:
             # Get checklist for this agent type
             checklist = self.quality_reviewer.document_type_checker.get_checklist_for_agent(agent_type)
@@ -292,6 +293,7 @@ class WorkflowCoordinator:
         except Exception as e:
             logger.warning(f"  ⚠️  Quality check failed for {agent_type.value}: {e}, assuming score 0 to trigger improvement")
             score = 0
+            quality_result_v1 = None
         
         # 3. DECIDE AND IMPROVE
         if score >= quality_threshold:
@@ -331,16 +333,49 @@ Improvement Suggestions:
             # 3b. Improve V1 -> V2
             logger.info(f"  🔧 Step 3b: Improving {agent_type.value} (V1 -> V2)...")
             try:
-                v2_file_path = self.document_improver.improve_and_save(
+                # Pass quality score and details to improver for better context
+                quality_score_for_improver = score
+                quality_details_for_improver = None
+                
+                if quality_result_v1:
+                    quality_details_for_improver = {
+                        "word_count": quality_result_v1.get("word_count", {}),
+                        "sections": quality_result_v1.get("sections", {}),
+                        "readability": quality_result_v1.get("readability", {})
+                    }
+                
+                # Use improved method with quality context
+                improved_doc = self.document_improver.improve_document(
                     original_document=v1_content,
                     document_type=agent_type.value,
                     quality_feedback=feedback_report,
-                    output_filename=output_filename,  # Overwrite original file
-                    project_id=project_id,
-                    context_manager=self.context_manager,
-                    agent_type=agent_type
+                    quality_score=quality_score_for_improver,
+                    quality_details=quality_details_for_improver
                 )
-                v2_content = self.file_manager.read_file(v2_file_path)
+                
+                # Save improved document
+                v2_file_path = self.file_manager.write_file(output_filename, improved_doc)
+                logger.info(f"Improved {agent_type.value} saved to: {v2_file_path}")
+                
+                # Save to context
+                if self.context_manager:
+                    try:
+                        from src.context.shared_context import AgentOutput, DocumentStatus
+                        from datetime import datetime
+                        output = AgentOutput(
+                            agent_type=agent_type,
+                            document_type=agent_type.value,
+                            content=improved_doc,
+                            file_path=v2_file_path,
+                            status=DocumentStatus.COMPLETE,
+                            generated_at=datetime.now()
+                        )
+                        self.context_manager.save_agent_output(project_id, output)
+                        logger.debug(f"Improved {agent_type.value} saved to context")
+                    except Exception as e:
+                        logger.warning(f"Could not save improved document to context: {e}")
+                
+                v2_content = improved_doc
                 logger.info(f"  ✅ V2 (Improved) generated: {len(v2_content)} characters")
                 
                 # Optionally check V2 quality (for logging)
@@ -434,6 +469,7 @@ Improvement Suggestions:
         # 2. CHECK V1 QUALITY (async)
         logger.info(f"  🔍 Step 2: Checking V1 quality (async) for {agent_type.value}...")
         score = 0
+        quality_result_v1 = None  # Initialize to ensure it's in scope
         try:
             loop = asyncio.get_event_loop()
             checklist = await loop.run_in_executor(
@@ -461,6 +497,7 @@ Improvement Suggestions:
         except Exception as e:
             logger.warning(f"  ⚠️  Quality check failed for {agent_type.value}: {e}, assuming score 0")
             score = 0
+            quality_result_v1 = None
         
         # 3. DECIDE AND IMPROVE (async)
         if score >= quality_threshold:
@@ -501,23 +538,59 @@ Improvement Suggestions:
             # 3b. Improve V1 -> V2 (async)
             logger.info(f"  🔧 Step 3b: Improving {agent_type.value} (V1 -> V2, async)...")
             try:
+                # Pass quality score and details to improver for better context
+                quality_score_for_improver = score
+                quality_details_for_improver = None
+                
+                if quality_result_v1:
+                    quality_details_for_improver = {
+                        "word_count": quality_result_v1.get("word_count", {}),
+                        "sections": quality_result_v1.get("sections", {}),
+                        "readability": quality_result_v1.get("readability", {})
+                    }
+                
+                # Use improved method with quality context (async)
                 loop = asyncio.get_event_loop()
-                v2_file_path = await loop.run_in_executor(
+                improved_doc = await loop.run_in_executor(
                     None,
-                    lambda: self.document_improver.improve_and_save(
+                    lambda: self.document_improver.improve_document(
                         original_document=v1_content,
                         document_type=agent_type.value,
                         quality_feedback=feedback_report,
-                        output_filename=output_filename,
-                        project_id=project_id,
-                        context_manager=self.context_manager,
-                        agent_type=agent_type
+                        quality_score=quality_score_for_improver,
+                        quality_details=quality_details_for_improver
                     )
                 )
-                v2_content = await loop.run_in_executor(
+                
+                # Save improved document (async)
+                v2_file_path = await loop.run_in_executor(
                     None,
-                    lambda: self.file_manager.read_file(v2_file_path)
+                    lambda: self.file_manager.write_file(output_filename, improved_doc)
                 )
+                logger.info(f"Improved {agent_type.value} saved (async) to: {v2_file_path}")
+                
+                # Save to context (async)
+                if self.context_manager:
+                    try:
+                        from src.context.shared_context import AgentOutput, DocumentStatus
+                        from datetime import datetime
+                        output = AgentOutput(
+                            agent_type=agent_type,
+                            document_type=agent_type.value,
+                            content=improved_doc,
+                            file_path=v2_file_path,
+                            status=DocumentStatus.COMPLETE,
+                            generated_at=datetime.now()
+                        )
+                        await loop.run_in_executor(
+                            None,
+                            lambda: self.context_manager.save_agent_output(project_id, output)
+                        )
+                        logger.debug(f"Improved {agent_type.value} saved to context (async)")
+                    except Exception as e:
+                        logger.warning(f"Could not save improved document to context: {e}")
+                
+                v2_content = improved_doc
                 logger.info(f"  ✅ V2 (Improved, async) generated: {len(v2_content)} characters")
                 
                 # Optionally check V2 quality
@@ -686,7 +759,7 @@ Improvement Suggestions:
             
             # 4. TECHNICAL DOCUMENTATION (with quality gate)
             # Note: PM documentation is generated in Phase 2, so we don't have it here
-            # Technical doc can be generated without PM summary (it's optional)
+            # Technical doc should include database design overview (high-level design)
             user_stories_output = self.context_manager.get_agent_output(project_id, AgentType.USER_STORIES)
             user_stories_summary = user_stories_output.content if user_stories_output else stories_content
             
@@ -694,29 +767,53 @@ Improvement Suggestions:
             # Technical documentation can work without it
             pm_summary_for_tech = None
             
+            logger.info("📊 Generating Technical Documentation (includes database design overview)...")
+            
             tech_path, tech_content = self._run_agent_with_quality_loop(
                 agent_instance=self.technical_agent,
                 agent_type=AgentType.TECHNICAL_DOCUMENTATION,
                 generate_kwargs={
                     "requirements_summary": req_summary,
                     "user_stories_summary": user_stories_summary,
-                    "pm_summary": pm_summary_for_tech  # None - PM doc is generated in Phase 2
+                    "pm_summary": pm_summary_for_tech
                 },
                 output_filename="technical/technical_spec.md",
                 project_id=project_id,
-                quality_threshold=70.0  # Technical docs threshold can be slightly lower
+                quality_threshold=70.0
             )
             results["files"]["technical_documentation"] = tech_path
             results["status"]["technical_documentation"] = "complete_v2"
             final_docs[AgentType.TECHNICAL_DOCUMENTATION] = tech_content
             document_file_paths[AgentType.TECHNICAL_DOCUMENTATION] = tech_path
             
+            # 5. DATABASE SCHEMA (with quality gate)
+            # Database schema is generated AFTER technical doc, so it can use the database design overview
+            # from technical doc to generate detailed SQL schemas
+            logger.info("📊 Generating Database Schema (based on technical doc database design overview)...")
+            
+            db_path, db_content = self._run_agent_with_quality_loop(
+                agent_instance=self.database_schema_agent,
+                agent_type=AgentType.DATABASE_SCHEMA,
+                generate_kwargs={
+                    "requirements_summary": req_summary,
+                    "technical_summary": tech_content  # Use full technical doc for database design overview
+                },
+                output_filename="database/database_schema.md",
+                project_id=project_id,
+                quality_threshold=70.0
+            )
+            results["files"]["database_schema"] = db_path
+            results["status"]["database_schema"] = "complete_v2"
+            final_docs[AgentType.DATABASE_SCHEMA] = db_content
+            document_file_paths[AgentType.DATABASE_SCHEMA] = db_path
+            
             logger.info("=" * 80)
             logger.info("✅ PHASE 1 COMPLETE: Foundational documents generated with quality gates")
             logger.info("=" * 80)
             
-            # Get technical summary for Phase 2
+            # Get technical summary and database schema for Phase 2
             technical_summary = tech_content
+            database_schema_summary = db_content
             
             # --- PHASE 2: PARALLEL GENERATION (DAG-based) ---
             logger.info("=" * 80)
@@ -735,6 +832,7 @@ Improvement Suggestions:
             phase1_deps_content = {
                 AgentType.REQUIREMENTS_ANALYST: req_content,
                 AgentType.TECHNICAL_DOCUMENTATION: technical_summary,
+                AgentType.DATABASE_SCHEMA: database_schema_summary,
                 AgentType.PROJECT_CHARTER: charter_content if charter_content else None,
                 AgentType.USER_STORIES: stories_content,
             }
