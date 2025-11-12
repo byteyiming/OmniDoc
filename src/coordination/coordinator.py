@@ -2,7 +2,7 @@
 Workflow Coordinator
 Orchestrates multi-agent documentation generation workflow
 """
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Callable
 from datetime import datetime
 from pathlib import Path
 import uuid
@@ -45,6 +45,9 @@ from src.utils.document_organizer import format_documents_by_level, get_document
 from src.coordination.workflow_dag import (
     get_phase1_tasks_for_profile,
     get_phase2_tasks_for_profile,
+    get_tasks_for_phases,
+    get_tasks_for_phase,
+    get_available_phases,
     build_phase1_task_dependencies,
     build_task_dependencies,
     build_kwargs_for_phase1_task,
@@ -1445,7 +1448,9 @@ Improvement Suggestions:
             all_failed_docs = []
             
             # Phase 1 documents (from results["status"])
-            phase1_doc_types = ["requirements", "project_charter", "user_stories", "technical_documentation", "database_schema"]
+            # NOTE: technical_documentation and database_schema have been moved to Phase 2 for parallel execution
+            # NOTE: business_model and marketing_plan have been moved to Phase 1 for quick decision-making
+            phase1_doc_types = ["requirements", "project_charter", "user_stories", "business_model", "marketing_plan"]
             for doc_type in phase1_doc_types:
                 if doc_type in results.get("status", {}):
                     if results["status"][doc_type] == "complete" or results["status"][doc_type] == "complete_v2":
@@ -1697,7 +1702,10 @@ Improvement Suggestions:
         project_id: Optional[str] = None,
         profile: str = "team",
         codebase_path: Optional[str] = None,
-        workflow_mode: str = "docs_first"
+        workflow_mode: str = "docs_first",
+        progress_callback: Optional[Callable[[str, str, str], None]] = None,
+        phase1_only: bool = False,
+        phases_to_run: Optional[List[int]] = None
     ) -> Dict:
         """
         Generate all documentation types asynchronously (native async implementation)
@@ -1718,6 +1726,19 @@ Improvement Suggestions:
             profile: "team" or "individual" - determines which docs to generate
             codebase_path: Optional path to codebase directory
             workflow_mode: "docs_first" (default) or "code_first" - workflow mode
+            progress_callback: Optional async callback for progress updates
+                Called with (phase, task_id, status) where:
+                - phase: "phase_1", "phase_2", "phase_3", "phase_4", or "phase_5"
+                - task_id: Task identifier (e.g., "requirements", "business_model")
+                - status: "complete" or "failed"
+            phase1_only: If True, only execute Phase 1 and skip all Phase 2+ (default: False)
+                Useful for testing or when you want to review Phase 1 results before continuing
+            phases_to_run: Optional list of phase numbers to execute (e.g., [2, 3] for Phase 2 and 3 only)
+                If None, runs all phases (2-5). Only applies if phase1_only=False.
+                Examples:
+                - [2] - Only Phase 2 (Technical Foundation)
+                - [2, 3] - Phase 2 and 3 (Technical + API/Dev docs)
+                - [2, 5] - Phase 2 and 5 (Technical + Business docs)
         
         Returns:
             Dict with generated file paths and status
@@ -1899,12 +1920,33 @@ Improvement Suggestions:
             
             # Execute Phase 1 tasks asynchronously with dependency resolution (native async)
             logger.info("🚀 Executing Phase 1 tasks in parallel (respecting dependencies)...")
-            phase1_task_results = await executor.execute()
+            
+            # Create progress callback wrapper for Phase 1
+            async def phase1_progress_callback(completed_count: int, total_count: int, task_id: str):
+                """Wrapper to convert executor callback to our format"""
+                if progress_callback:
+                    # Find the task to get its agent_type for display name
+                    task = next((t for t in phase1_tasks if t.task_id == task_id), None)
+                    if task:
+                        # Map task_id to document display name
+                        doc_name_map = {
+                            "requirements": "Requirements",
+                            "project_charter": "Project Charter",
+                            "user_stories": "User Stories",
+                            "business_model": "Business Model",
+                            "marketing_plan": "Marketing Plan",
+                        }
+                        doc_name = doc_name_map.get(task_id, task_id.replace("_", " ").title())
+                        await progress_callback("phase_1", doc_name, "complete")
+            
+            phase1_task_results = await executor.execute(progress_callback=phase1_progress_callback)
             
             # Process Phase 1 results and update results dictionary
             req_content = None
             charter_content = None
             stories_content = None
+            business_model_content = None
+            marketing_plan_content = None
             tech_content = None
             db_content = None
             
@@ -1974,194 +2016,304 @@ Improvement Suggestions:
             logger.info("✅ PHASE 1 COMPLETE: Foundational documents generated with quality gates (DAG)")
             logger.info("=" * 80)
             
+            # Check if we should skip Phase 2
+            if phase1_only:
+                logger.info("=" * 80)
+                logger.info("⏸️  PHASE 2 SKIPPED: phase1_only=True - Stopping after Phase 1")
+                logger.info("=" * 80)
+                
+                # Send WebSocket update if callback is available
+                if progress_callback:
+                    await progress_callback("phase_1", "all", "complete")
+                
+                # Return results with Phase 1 only
+                results["phase1_only"] = True
+                results["phase2_summary"] = {
+                    "skipped": True,
+                    "message": "Phase 2 skipped due to phase1_only=True"
+                }
+                
+                # Skip to Phase 3 (final packaging) or return early
+                # For now, we'll skip Phase 2 and Phase 3, return Phase 1 results
+                return results
+            
             # Get technical summary and database schema for Phase 2
             technical_summary = tech_content
             database_schema_summary = db_content
             
-            # --- PHASE 2: PARALLEL GENERATION (DAG-based) ---
-            logger.info("=" * 80)
-            logger.info("--- PHASE 2: Generating Secondary Documents (Parallel DAG) ---")
-            logger.info("=" * 80)
+            # Determine which phases to run
+            if phases_to_run is None:
+                # Get available phases for the profile
+                available_phases = get_available_phases(profile=profile)
+                phases_to_run = available_phases
+            else:
+                # Validate phases_to_run
+                available_phases = get_available_phases(profile=profile)
+                phases_to_run = [p for p in phases_to_run if p in available_phases]
+                if not phases_to_run:
+                    logger.warning(f"No valid phases to run. Available phases: {available_phases}")
+                    return results
             
-            # Get Phase 2 task configurations from DAG
-            phase2_tasks = get_phase2_tasks_for_profile(profile=profile)
-            logger.info(f"📋 Phase 2 DAG: {len(phase2_tasks)} tasks for profile '{profile}'")
+            logger.info(f"📋 Will execute phases: {phases_to_run} for profile '{profile}'")
             
-            # Build dependency map (AgentType -> task_id dependencies)
-            dependency_map = build_task_dependencies(phase2_tasks)
-            
-            # Prepare Phase 1 content for dependency extraction
+            # Prepare Phase 1 content for dependency extraction (used across all phases)
             phase1_deps_content = {
                 AgentType.REQUIREMENTS_ANALYST: req_content,
                 AgentType.TECHNICAL_DOCUMENTATION: technical_summary,
                 AgentType.DATABASE_SCHEMA: database_schema_summary,
                 AgentType.PROJECT_CHARTER: charter_content if charter_content else None,
                 AgentType.USER_STORIES: stories_content,
+                AgentType.BUSINESS_MODEL: business_model_content if business_model_content else None,
+                AgentType.MARKETING_PLAN: marketing_plan_content if marketing_plan_content else None,
             }
             
-            # Create async executor for Phase 2
-            executor = AsyncParallelExecutor(max_workers=8)
+            # Phase descriptions for logging
+            phase_descriptions = {
+                2: "Technical Foundation Documents",
+                3: "API and Development Documents",
+                4: "User/Support and Project Management Documents"
+            }
             
-            # Create async task execution coroutines for each Phase 2 task
-            def create_async_task_coro(task: Phase2Task):
-                """Create an async task coroutine that extracts dependencies and executes agent"""
-                async def execute_async_task():
-                    # Extract dependency content from context (for Phase 2 dependencies)
-                    deps_content = phase1_deps_content.copy()
-                    
-                    # Get Phase 2 dependencies from context (async-safe)
-                    loop = asyncio.get_event_loop()
-                    for dep_type in task.dependencies:
-                        if dep_type not in deps_content:
-                            dep_type_capture = dep_type
-                            dep_output = await loop.run_in_executor(
-                                None,
-                                lambda dt=dep_type_capture: self.context_manager.get_agent_output(project_id, dt)
-                            )
-                            if dep_output:
-                                deps_content[dep_type] = dep_output.content
-                            else:
-                                logger.warning(f"  ⚠️  Dependency {dep_type.value} not found in context for {task.task_id}")
-                                deps_content[dep_type] = None
-                    
-                    # Build kwargs for agent.generate_and_save
-                    kwargs = build_kwargs_for_task(
-                        task=task,
-                        coordinator=self,
-                        req_summary=req_summary,
-                        technical_summary=technical_summary,
-                        charter_content=charter_content,
-                        project_id=project_id,
-                        context_manager=self.context_manager,
-                        deps_content=deps_content,
-                        code_analysis_summary=code_analysis_summary  # Pass code analysis for code-first mode
-                    )
-                    
-                    # Apply folder prefix to output_filename based on agent type
-                    if "output_filename" in kwargs:
-                        kwargs["output_filename"] = get_output_filename_for_agent(task.agent_type, kwargs["output_filename"])
-                    
-                    # Get agent instance
-                    agent = get_agent_for_task(self, task.agent_type)
-                    if not agent:
-                        raise ValueError(f"Agent not found for {task.agent_type.value}")
-                    
-                    # Execute agent.generate_and_save (async if available, otherwise sync in executor)
-                    if hasattr(agent, 'async_generate_and_save') and asyncio.iscoroutinefunction(agent.async_generate_and_save):
-                        # Native async method (best performance)
-                        result = await agent.async_generate_and_save(**kwargs)
-                    elif hasattr(agent, 'generate_and_save') and asyncio.iscoroutinefunction(agent.generate_and_save):
-                        # Async generate_and_save method
-                        result = await agent.generate_and_save(**kwargs)
-                    else:
-                        # Fallback: run sync method in executor
-                        result = await loop.run_in_executor(
-                            None,
-                            lambda kw=kwargs: agent.generate_and_save(**kw)
-                        )
-                    return result
+            # Execute phases sequentially (2, 3, 4)
+            all_successful_tasks = []
+            all_failed_tasks = []
+            
+            for phase_num in sorted(phases_to_run):
+                phase_name = f"PHASE {phase_num}"
+                phase_key = f"phase_{phase_num}"
+                phase_desc = phase_descriptions.get(phase_num, f"Phase {phase_num} Documents")
                 
-                return execute_async_task
-            
-            # Add all tasks to async executor
-            for task in phase2_tasks:
-                task_coro = create_async_task_coro(task)()
-                dep_task_ids = dependency_map.get(task.task_id, [])
+                logger.info("=" * 80)
+                logger.info(f"--- {phase_name}: {phase_desc} (Parallel DAG) ---")
+                logger.info("=" * 80)
                 
-                executor.add_task(
-                    task_id=task.task_id,
-                    coro=task_coro,
-                    dependencies=dep_task_ids
-                )
-                logger.debug(f"  📝 Added async task: {task.task_id} (depends on: {dep_task_ids})")
-            
-            # Execute parallel tasks asynchronously (native async)
-            logger.info(f"🚀 Executing {len(executor.tasks)} parallel async tasks with DAG dependencies...")
-            parallel_results = await executor.execute()
-            
-            # Collect parallel task results with resilient error handling
-            successful_tasks = []
-            failed_tasks = []
-            
-            for task in phase2_tasks:
-                task_id = task.task_id
-                file_path = parallel_results.get(task_id)
-                agent_type = task.agent_type
-                doc_type = get_doc_type_from_agent_type(agent_type)
+                # Get tasks for this phase
+                phase_tasks = get_tasks_for_phase(profile=profile, phase_number=phase_num)
+                logger.info(f"📋 {phase_name} DAG: {len(phase_tasks)} tasks for profile '{profile}'")
                 
-                # Check task status from executor
-                task_status = executor.tasks.get(task_id)
-                if task_status and task_status.status == AsyncTaskStatus.FAILED:
-                    # Task failed - record error but continue processing other tasks
-                    error = task_status.error if task_status.error else "Unknown error"
-                    error_msg = str(error) if error else "Unknown error"
-                    logger.error(f"  ❌ Task {task_id} ({doc_type}) failed: {error_msg}")
-                    results["status"][doc_type] = "failed"
-                    failed_tasks.append({
-                        "task_id": task_id,
-                        "doc_type": doc_type,
-                        "agent_type": agent_type.value,
-                        "error": error_msg
-                    })
-                elif file_path and task_status and task_status.status == AsyncTaskStatus.COMPLETE:
-                    # Task succeeded
-                    results["files"][doc_type] = file_path
-                    results["status"][doc_type] = "complete"
-                    
-                    # Read content and add to final_docs (async I/O)
-                    try:
+                if not phase_tasks:
+                    logger.info(f"⏭️  {phase_name}: No tasks for this phase, skipping...")
+                    continue
+                
+                # Build dependency map (AgentType -> task_id dependencies)
+                dependency_map = build_task_dependencies(phase_tasks)
+                
+                # Create async executor for this phase
+                executor = AsyncParallelExecutor(max_workers=8)
+            
+                # Create async task execution coroutines for this phase
+                def create_async_task_coro(task: Phase2Task):
+                    """Create an async task coroutine that extracts dependencies and executes agent"""
+                    async def execute_async_task():
+                        # Extract dependency content from context (for dependencies from previous phases)
+                        deps_content = phase1_deps_content.copy()
+                        
+                        # Get dependencies from context (async-safe)
                         loop = asyncio.get_event_loop()
-                        content = await loop.run_in_executor(
-                            None,
-                            lambda fp=file_path: self.file_manager.read_file(fp)
+                        for dep_type in task.dependencies:
+                            if dep_type not in deps_content:
+                                dep_type_capture = dep_type
+                                dep_output = await loop.run_in_executor(
+                                    None,
+                                    lambda dt=dep_type_capture: self.context_manager.get_agent_output(project_id, dt)
+                                )
+                                if dep_output:
+                                    deps_content[dep_type] = dep_output.content
+                                else:
+                                    logger.warning(f"  ⚠️  Dependency {dep_type.value} not found in context for {task.task_id}")
+                                    deps_content[dep_type] = None
+                        
+                        # Build kwargs for agent.generate_and_save
+                        kwargs = build_kwargs_for_task(
+                            task=task,
+                            coordinator=self,
+                            req_summary=req_summary,
+                            technical_summary=technical_summary,
+                            charter_content=charter_content,
+                            project_id=project_id,
+                            context_manager=self.context_manager,
+                            deps_content=deps_content,
+                            code_analysis_summary=code_analysis_summary  # Pass code analysis for code-first mode
                         )
-                        final_docs[agent_type] = content
-                        document_file_paths[agent_type] = file_path
-                        logger.info(f"  ✅ {doc_type}: {file_path}")
-                        successful_tasks.append({
-                            "task_id": task_id,
-                            "doc_type": doc_type,
-                            "agent_type": agent_type.value,
-                            "file_path": file_path
-                        })
-                    except Exception as e:
-                        logger.warning(f"  ⚠️  Could not read {doc_type}: {e}")
+                        
+                        # Apply folder prefix to output_filename based on agent type
+                        if "output_filename" in kwargs:
+                            kwargs["output_filename"] = get_output_filename_for_agent(task.agent_type, kwargs["output_filename"])
+                        
+                        # Get agent instance
+                        agent = get_agent_for_task(self, task.agent_type)
+                        if not agent:
+                            raise ValueError(f"Agent not found for {task.agent_type.value}")
+                        
+                        # Execute agent.generate_and_save (async if available, otherwise sync in executor)
+                        if hasattr(agent, 'async_generate_and_save') and asyncio.iscoroutinefunction(agent.async_generate_and_save):
+                            # Native async method (best performance)
+                            result = await agent.async_generate_and_save(**kwargs)
+                        elif hasattr(agent, 'generate_and_save') and asyncio.iscoroutinefunction(agent.generate_and_save):
+                            # Async generate_and_save method
+                            result = await agent.generate_and_save(**kwargs)
+                        else:
+                            # Fallback: run sync method in executor
+                            result = await loop.run_in_executor(
+                                None,
+                                lambda kw=kwargs: agent.generate_and_save(**kw)
+                            )
+                        return result
+                    
+                    return execute_async_task
+            
+                # Add all tasks for this phase to async executor
+                for task in phase_tasks:
+                    task_coro = create_async_task_coro(task)()
+                    dep_task_ids = dependency_map.get(task.task_id, [])
+                    
+                    executor.add_task(
+                        task_id=task.task_id,
+                        coro=task_coro,
+                        dependencies=dep_task_ids
+                    )
+                    logger.debug(f"  📝 Added {phase_name} async task: {task.task_id} (depends on: {dep_task_ids})")
+                
+                # Execute parallel tasks asynchronously (native async)
+                logger.info(f"🚀 Executing {len(executor.tasks)} parallel async tasks for {phase_name} with DAG dependencies...")
+                
+                # Create progress callback wrapper for this phase
+                async def phase_progress_callback(completed_count: int, total_count: int, task_id: str):
+                    """Wrapper to convert executor callback to our format"""
+                    if progress_callback:
+                        # Find the task to get its agent_type for display name
+                        task = next((t for t in phase_tasks if t.task_id == task_id), None)
+                        if task:
+                            # Map task_id to document display name
+                            doc_name_map = {
+                                "technical_doc": "Technical Documentation",
+                                "database_schema": "Database Schema",
+                                "api_doc": "API Documentation",
+                                "setup_guide": "Setup Guide",
+                                "dev_doc": "Developer Documentation",
+                                "test_doc": "Test Plan",
+                                "user_doc": "User Guide",
+                                "legal_doc": "Legal Compliance",
+                                "support_playbook": "Support Playbook",
+                                "pm_doc": "Project Plan",
+                                "stakeholder_doc": "Stakeholder Summary",
+                                "business_model": "Business Model",
+                                "marketing_plan": "Marketing Plan",
+                            }
+                            doc_name = doc_name_map.get(task_id, task_id.replace("_", " ").title())
+                            await progress_callback(phase_key, doc_name, "complete")
+                
+                parallel_results = await executor.execute(progress_callback=phase_progress_callback)
+                
+                # Collect parallel task results with resilient error handling
+                successful_tasks = []
+                failed_tasks = []
+                
+                # Helper function to convert AgentType to doc_type
+                agent_type_to_doc_type = {
+                    AgentType.TECHNICAL_DOCUMENTATION: "technical_documentation",
+                    AgentType.DATABASE_SCHEMA: "database_schema",
+                    AgentType.API_DOCUMENTATION: "api_documentation",
+                    AgentType.SETUP_GUIDE: "setup_guide",
+                    AgentType.DEVELOPER_DOCUMENTATION: "developer_documentation",
+                    AgentType.TEST_DOCUMENTATION: "test_documentation",
+                    AgentType.USER_DOCUMENTATION: "user_documentation",
+                    AgentType.LEGAL_COMPLIANCE: "legal_compliance",
+                    AgentType.SUPPORT_PLAYBOOK: "support_playbook",
+                    AgentType.PM_DOCUMENTATION: "pm_documentation",
+                    AgentType.STAKEHOLDER_COMMUNICATION: "stakeholder_communication",
+                    AgentType.BUSINESS_MODEL: "business_model",
+                    AgentType.MARKETING_PLAN: "marketing_plan",
+                }
+                
+                def get_doc_type_from_agent_type(agent_type: AgentType) -> str:
+                    """Convert AgentType to document type name for results"""
+                    return agent_type_to_doc_type.get(agent_type, agent_type.value)
+                
+                for task in phase_tasks:
+                    task_id = task.task_id
+                    file_path = parallel_results.get(task_id)
+                    agent_type = task.agent_type
+                    doc_type = get_doc_type_from_agent_type(agent_type)
+                    
+                    # Check task status from executor
+                    task_status = executor.tasks.get(task_id)
+                    if task_status and task_status.status == AsyncTaskStatus.FAILED:
+                        # Task failed - record error but continue processing other tasks
+                        error = task_status.error if task_status.error else "Unknown error"
+                        error_msg = str(error) if error else "Unknown error"
+                        logger.error(f"  ❌ Task {task_id} ({doc_type}) failed: {error_msg}")
                         results["status"][doc_type] = "failed"
                         failed_tasks.append({
                             "task_id": task_id,
                             "doc_type": doc_type,
                             "agent_type": agent_type.value,
-                            "error": f"Failed to read file: {str(e)}"
+                            "error": error_msg
                         })
-                else:
-                    # Task status unknown or incomplete
-                    logger.warning(f"  ⚠️  Task {task_id} ({doc_type}) has unknown status")
-                    results["status"][doc_type] = "unknown"
-                    failed_tasks.append({
-                        "task_id": task_id,
-                        "doc_type": doc_type,
-                        "agent_type": agent_type.value,
-                        "error": "Task status unknown or incomplete"
-                    })
+                    elif file_path and task_status and task_status.status == AsyncTaskStatus.COMPLETE:
+                        # Task succeeded
+                        results["files"][doc_type] = file_path
+                        results["status"][doc_type] = "complete"
+                        
+                        # Read content and add to final_docs (async I/O)
+                        try:
+                            loop = asyncio.get_event_loop()
+                            content = await loop.run_in_executor(
+                                None,
+                                lambda fp=file_path: self.file_manager.read_file(fp)
+                            )
+                            final_docs[agent_type] = content
+                            document_file_paths[agent_type] = file_path
+                            logger.info(f"  ✅ {doc_type}: {file_path}")
+                            successful_tasks.append({
+                                "task_id": task_id,
+                                "doc_type": doc_type,
+                                "agent_type": agent_type.value,
+                                "file_path": file_path
+                            })
+                        except Exception as e:
+                            logger.warning(f"  ⚠️  Could not read {doc_type}: {e}")
+                            results["status"][doc_type] = "failed"
+                            failed_tasks.append({
+                                "task_id": task_id,
+                                "doc_type": doc_type,
+                                "agent_type": agent_type.value,
+                                "error": f"Failed to read file: {str(e)}"
+                            })
+                    else:
+                        # Task status unknown or incomplete
+                        logger.warning(f"  ⚠️  Task {task_id} ({doc_type}) has unknown status")
+                        results["status"][doc_type] = "unknown"
+                        failed_tasks.append({
+                            "task_id": task_id,
+                            "doc_type": doc_type,
+                            "agent_type": agent_type.value,
+                            "error": "Task status unknown or incomplete"
+                        })
+                
+                # Log phase summary
+                logger.info("=" * 80)
+                logger.info(f"✅ {phase_name} COMPLETE: {len(successful_tasks)}/{len(phase_tasks)} documents generated successfully")
+                if successful_tasks:
+                    logger.info(f"   ✅ Successful: {', '.join([t['doc_type'] for t in successful_tasks])}")
+                if failed_tasks:
+                    logger.warning(f"   ❌ Failed: {', '.join([t['doc_type'] for t in failed_tasks])}")
+                    for failed_task in failed_tasks:
+                        logger.warning(f"      - {failed_task['doc_type']}: {failed_task.get('error', 'Unknown error')}")
+                logger.info("=" * 80)
+                
+                # Accumulate results across all phases
+                all_successful_tasks.extend(successful_tasks)
+                all_failed_tasks.extend(failed_tasks)
             
-            # Log Phase 2 summary with success/failure breakdown
-            logger.info("=" * 80)
-            logger.info(f"✅ PHASE 2 COMPLETE: {len(successful_tasks)}/{len(phase2_tasks)} documents generated successfully")
-            if successful_tasks:
-                logger.info(f"   ✅ Successful: {', '.join([t['doc_type'] for t in successful_tasks])}")
-            if failed_tasks:
-                logger.warning(f"   ❌ Failed: {', '.join([t['doc_type'] for t in failed_tasks])}")
-                for failed_task in failed_tasks:
-                    logger.warning(f"      - {failed_task['doc_type']}: {failed_task.get('error', 'Unknown error')}")
-            logger.info("=" * 80)
-            
-            # Store task execution summary in results for Phase 3 reporting
+            # Store overall task execution summary in results
             results["phase2_summary"] = {
-                "successful": successful_tasks,
-                "failed": failed_tasks,
-                "total": len(phase2_tasks),
-                "success_count": len(successful_tasks),
-                "failed_count": len(failed_tasks)
+                "successful": all_successful_tasks,
+                "failed": all_failed_tasks,
+                "total": len(all_successful_tasks) + len(all_failed_tasks),
+                "success_count": len(all_successful_tasks),
+                "failed_count": len(all_failed_tasks),
+                "phases_executed": phases_to_run
             }
             
             # --- PHASE 3: FINAL PACKAGING (Cross-ref, Review, Convert) ---
@@ -2357,7 +2509,9 @@ Improvement Suggestions:
             all_failed_docs = []
             
             # Phase 1 documents (from results["status"])
-            phase1_doc_types = ["requirements", "project_charter", "user_stories", "technical_documentation", "database_schema"]
+            # NOTE: technical_documentation and database_schema have been moved to Phase 2 for parallel execution
+            # NOTE: business_model and marketing_plan have been moved to Phase 1 for quick decision-making
+            phase1_doc_types = ["requirements", "project_charter", "user_stories", "business_model", "marketing_plan"]
             for doc_type in phase1_doc_types:
                 if doc_type in results.get("status", {}):
                     if results["status"][doc_type] == "complete" or results["status"][doc_type] == "complete_v2":
