@@ -589,7 +589,19 @@ async function showDocumentReview(docName, taskId) {
         phase1Review.classList.remove('hidden');
         phase1Review.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         
+        // Show notes section
+        const notesSection = document.getElementById('approvalNotes');
+        if (notesSection) {
+            notesSection.classList.remove('hidden');
+        }
+        
         showStatus(`${docName} generated! Please review and approve to continue.`, 'info');
+        
+        // Focus on notes textarea for better UX
+        const notesText = document.getElementById('approvalNotesText');
+        if (notesText) {
+            setTimeout(() => notesText.focus(), 100);
+        }
     } catch (error) {
         console.error('Error loading document:', error);
         showStatus('Error loading document: ' + error.message, 'error');
@@ -647,6 +659,13 @@ function createDocumentCard(docName, docData) {
 function hideDocumentReview() {
     const phase1Review = document.getElementById('phase1Review');
     phase1Review.classList.add('hidden');
+    
+    // Clear notes
+    const notesText = document.getElementById('approvalNotesText');
+    if (notesText) {
+        notesText.value = '';
+    }
+    
     currentReviewingDocument = null;
     currentReviewingAgentType = null;
 }
@@ -768,4 +787,30 @@ async function rejectPhase1() {
     }
 }
 window.rejectPhase1 = rejectPhase1;
+
+// Keyboard shortcuts for approval workflow
+document.addEventListener('keydown', (e) => {
+    const phase1Review = document.getElementById('phase1Review');
+    if (!phase1Review || phase1Review.classList.contains('hidden')) {
+        return; // Approval UI not visible
+    }
+    
+    const notesText = document.getElementById('approvalNotesText');
+    const isTypingInNotes = notesText && document.activeElement === notesText;
+    
+    // Enter key: Approve (if not typing in notes, or Ctrl+Enter)
+    if (e.key === 'Enter' && (!isTypingInNotes || e.ctrlKey)) {
+        e.preventDefault();
+        if (!isTypingInNotes || e.ctrlKey) {
+            approvePhase1();
+        }
+    }
+    
+    // Esc key: Cancel/Close (only if not typing in notes)
+    if (e.key === 'Escape' && !isTypingInNotes) {
+        e.preventDefault();
+        // Don't auto-reject, just close the review UI
+        // User can manually reject if needed
+    }
+});
 

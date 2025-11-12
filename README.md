@@ -83,10 +83,12 @@ uv run python -m src.web.app
 
 - **21 Documentation Agents**: Requirements, PM, Technical, API, Developer, Stakeholder, User, Test, Quality Review, Format Converter, Business Model, Marketing Plan, Legal Compliance, Database Schema, Setup Guide, User Stories, Support Playbook, and more
 - **Hybrid Workflow**: 
-  - **Phase 1 (Quality Gates with DAG)**: Foundational documents (Requirements, Project Charter, User Stories, Technical Documentation, Database Schema) use DAG-based parallel execution with iterative quality loops (generate → check → improve) to ensure maximum quality
-  - **Phase 2 (Parallel Execution)**: Secondary documents generated in parallel using DAG-based async execution with dependency resolution (3x faster)
-  - **Phase 3 (Final Packaging)**: Cross-referencing, quality review, and format conversion
-  - **Phase 4 (Code Analysis)**: Optional codebase analysis and documentation updates
+  - **Phase 1 (Sequential with Approval)**: Strategic & business foundation documents (Requirements, Project Charter, User Stories, Business Model, Marketing Plan, PM Documentation, Stakeholder Communication) are generated **sequentially** with iterative quality loops (V1 → V2 → V3) and **per-document user approval** before proceeding to the next document
+  - **Phase 2 (Parallel Execution)**: Technical documents (Technical Documentation, Database Schema, API Documentation, Setup Guide) generated in parallel using DAG-based async execution with dependency resolution (3x faster)
+  - **Phase 3 (Parallel Execution)**: Development & testing documents (Developer Documentation, Test Documentation) generated in parallel
+  - **Phase 4 (Parallel Execution)**: User & support documents (User Documentation, Support Playbook, Legal Compliance) generated in parallel
+  - **Final Packaging**: Cross-referencing, quality review, and format conversion
+  - **Code Analysis** (Optional): Codebase analysis and documentation updates
 - **LLM Provider**: 
   - **Multiple Providers Supported**: Gemini, Ollama, OpenAI
   - **Default Provider**: `gemini` (configurable via `LLM_PROVIDER` environment variable)
@@ -96,8 +98,10 @@ uv run python -m src.web.app
   - **OpenAI**: GPT-4o-mini, GPT-4o, GPT-3.5-turbo
 - **Format Conversion**: Outputs Markdown, HTML, PDF, DOCX
 - **Quality Assurance**: Automated quality checks with document-type-specific criteria and structured LLM-as-Judge feedback
-- **Parallel Execution**: Async parallel execution with DAG-based dependencies (Phase 1 and Phase 2, 3x speedup)
-- **Web Interface**: FastAPI web app with real-time progress tracking via WebSocket
+- **Document Versioning**: Incremental improvement system (V1 → V2 → V3) with version tracking in database
+- **Approval Workflow**: Per-document approval system for Phase 1 documents - each document waits for user approval before proceeding
+- **Parallel Execution**: Async parallel execution with DAG-based dependencies (Phase 2-4, 3x speedup)
+- **Web Interface**: FastAPI web app with real-time progress tracking via WebSocket and interactive approval UI
 - **Error Handling**: Retry logic with exponential backoff
 - **Document Templates**: Jinja2-based customizable templates
 - **Cross-Referencing**: Automatic linking between documents
@@ -296,27 +300,32 @@ results = coordinator.generate_all_docs(
 )
 
 # Generates 20+ document types using Hybrid Workflow:
-# Phase 1 (Quality Gates with DAG - Parallel execution with dependencies):
-# - Requirements (iterative quality loop)
-# - Project Charter (team only, iterative quality loop)
-# - User Stories (iterative quality loop, depends on Requirements and Project Charter)
-# - Technical Specification (iterative quality loop, depends on Requirements and User Stories)
-# - Database Schema (iterative quality loop, depends on Requirements and Technical Documentation)
+# Phase 1 (Sequential with Approval - Each document waits for approval):
+# - Requirements → ⏸️ Wait for approval → Continue
+# - Project Charter (team only) → ⏸️ Wait for approval → Continue
+# - User Stories (team only) → ⏸️ Wait for approval → Continue
+# - Business Model (team only) → ⏸️ Wait for approval → Continue
+# - Marketing Plan (team only) → ⏸️ Wait for approval → Continue
+# - PM Documentation (team only) → ⏸️ Wait for approval → Continue
+# - Stakeholder Communication (team only) → ⏸️ Wait for approval → Continue
+# Each document: Generate V1 → Quality Check → Improve (V2/V3) → Save Version → Wait for Approval
 #
 # Phase 2 (Parallel Execution with DAG):
-# - API Documentation (depends on Technical Documentation and Database Schema)
-# - Setup Guide (depends on API Documentation, Technical Documentation, and Database Schema)
-# - Developer Guide
-# - Test Plan
-# - User Guide
-# - Legal Compliance
-# - PM Plan (team only)
-# - Stakeholder Summary (team only)
-# - Business Model (team only)
-# - Marketing Plan (team only)
-# - Support Playbook
+# - Technical Documentation (depends on Requirements, User Stories)
+# - Database Schema (depends on Requirements, Technical Documentation)
+# - API Documentation (depends on Technical Documentation, Database Schema)
+# - Setup Guide (depends on API Documentation, Technical Documentation, Database Schema)
 #
-# Phase 3 (Final Packaging):
+# Phase 3 (Parallel Execution):
+# - Developer Documentation (depends on API Documentation, Technical Documentation)
+# - Test Documentation (depends on Technical Documentation)
+#
+# Phase 4 (Parallel Execution):
+# - User Documentation (depends on Requirements)
+# - Support Playbook (depends on User Documentation)
+# - Legal Compliance (depends on Technical Documentation)
+#
+# Final Packaging:
 # - Cross-referencing
 # - Quality Review
 # - Format conversions (HTML, PDF, DOCX)
@@ -504,10 +513,12 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - **Benefits**: Flexibility, cost optimization, local development support, hybrid configurations, phase-based optimization
 
 ### Hybrid Workflow
-- **Phase 1**: DAG-based parallel execution with quality gates and iterative improvement for foundational documents (Requirements, Project Charter, User Stories, Technical Documentation, Database Schema)
-- **Phase 2**: Parallel execution with DAG-based dependencies for maximum speed (API Documentation, Setup Guide, Developer Documentation, etc.)
-- **Phase 3**: Final packaging with cross-referencing, quality review, and format conversion
-- **Phase 4**: Optional code analysis and documentation updates
+- **Phase 1 (Sequential with Approval)**: Strategic & business foundation documents are generated **sequentially** with iterative quality improvement (V1 → V2 → V3) and **per-document user approval**. Each document must be approved before the next one is generated. Documents include: Requirements, Project Charter (team only), User Stories (team only), Business Model (team only), Marketing Plan (team only), PM Documentation (team only), Stakeholder Communication (team only)
+- **Phase 2 (Parallel Execution)**: Technical documents generated in parallel with DAG-based dependencies for maximum speed (Technical Documentation, Database Schema, API Documentation, Setup Guide)
+- **Phase 3 (Parallel Execution)**: Development & testing documents generated in parallel (Developer Documentation, Test Documentation)
+- **Phase 4 (Parallel Execution)**: User & support documents generated in parallel (User Documentation, Support Playbook, Legal Compliance)
+- **Final Packaging**: Cross-referencing, quality review, and format conversion
+- **Code Analysis** (Optional): Codebase analysis and documentation updates
 
 ### Real-Time Progress Updates
 - **WebSocket**: Real-time progress updates via WebSocket
@@ -524,31 +535,51 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 📚 Additional Resources
 
-- **Workflow Documentation**: See [WORKFLOW_DOCUMENTATION.md](WORKFLOW_DOCUMENTATION.md) for detailed workflow documentation
-- **Phase Model Configuration**: See [docs/PHASE_MODEL_CONFIG.md](docs/PHASE_MODEL_CONFIG.md) for phase-based model configuration guide
-- **Ollama Setup**: See [docs/OLLAMA_SETUP.md](docs/OLLAMA_SETUP.md) for Ollama local setup instructions
+- **Workflow Documentation**: See [CODE_EXECUTION_FLOW.md](CODE_EXECUTION_FLOW.md) for detailed workflow and code execution documentation
+- **Phase Model Configuration**: See [src/utils/phase_model_config.py](src/utils/phase_model_config.py) for phase-based model configuration implementation. Configuration is done via environment variables (e.g., `GEMINI_PHASE1_MODEL`, `OLLAMA_PHASE2_MODEL`)
+- **Ollama Setup**: See [scripts/setup_ollama.sh](scripts/setup_ollama.sh) for Ollama local setup script. Also see README "Ollama Configuration" section above for detailed setup instructions
 - **Configuration Guide**: See [src/config/README.md](src/config/README.md) for detailed configuration options
 - **Examples**: See [examples/](examples/) directory for usage examples
-- **Generated Docs**: See [docs/](docs/) directory for generated documentation index
+- **Project Status**: See [PROJECT_STATUS.md](PROJECT_STATUS.md) for current project status and testing information
 
 ## 🔄 Workflow Overview
 
-DOCU-GEN uses a **Hybrid Workflow** that combines quality gates with DAG-based parallel execution:
+DOCU-GEN uses a **Hybrid Workflow** that combines sequential approval-based execution for strategic documents with parallel execution for technical documents:
 
-1. **Phase 1 (Quality Gates with DAG)**: Foundational documents (Requirements, Project Charter, User Stories, Technical Documentation, Database Schema) are generated in parallel using DAG-based execution with iterative quality loops to ensure maximum quality. Tasks execute in parallel while respecting dependencies (e.g., Database Schema depends on Technical Documentation).
-2. **Phase 2 (Parallel Execution with DAG)**: Secondary documents are generated in parallel using DAG-based async execution with dependency resolution for maximum speed. Tasks continue executing even if some tasks fail, with comprehensive error reporting.
-3. **Phase 3 (Final Packaging)**: Cross-referencing, quality review (with structured LLM-as-Judge feedback), and format conversion
-4. **Phase 4 (Code Analysis)**: Optional codebase analysis and documentation updates
+1. **Phase 1 (Sequential with Approval)**: Strategic & business foundation documents are generated **one at a time** with iterative quality improvement (V1 → V2 → V3). After each document is generated and improved, the workflow **pauses and waits for user approval** before proceeding to the next document. This ensures critical foundation documents meet user requirements before moving forward.
+   - Documents: Requirements, Project Charter (team only), User Stories (team only), Business Model (team only), Marketing Plan (team only), PM Documentation (team only), Stakeholder Communication (team only)
+   - Process: Generate → Quality Check → Improve (if needed) → Save Version → **Wait for Approval** → Continue
+   
+2. **Phase 2 (Parallel Execution with DAG)**: Technical documents are generated in parallel using DAG-based async execution with dependency resolution for maximum speed. Tasks execute in parallel while respecting dependencies (e.g., API Documentation depends on Technical Documentation and Database Schema).
+   - Documents: Technical Documentation, Database Schema, API Documentation, Setup Guide
+   
+3. **Phase 3 (Parallel Execution)**: Development & testing documents generated in parallel
+   - Documents: Developer Documentation, Test Documentation
+   
+4. **Phase 4 (Parallel Execution)**: User & support documents generated in parallel
+   - Documents: User Documentation, Support Playbook, Legal Compliance
+   
+5. **Final Packaging**: Cross-referencing, quality review (with structured LLM-as-Judge feedback), and format conversion
 
-See [WORKFLOW_DOCUMENTATION.md](WORKFLOW_DOCUMENTATION.md) for detailed workflow documentation.
+6. **Code Analysis** (Optional): Codebase analysis and documentation updates
+
+**Key Features:**
+- **Document Versioning**: Each document version (V1, V2, V3) is tracked in the database
+- **Approval Workflow**: Interactive approval UI in web interface - approve or reject each Phase 1 document
+- **Incremental Improvement**: Documents automatically improve if quality score is below threshold (max 3 iterations)
+
+See [CODE_EXECUTION_FLOW.md](CODE_EXECUTION_FLOW.md) for detailed workflow and code execution documentation.
 
 ## ⚙️ Architecture
 
 - **Multiple LLM Providers**: Supports Gemini, Ollama, and OpenAI with configurable per-agent provider selection
-- **Async Execution**: Phase 1 and Phase 2 agents use native async support for better performance
-- **DAG-Based Dependencies**: Phase 1 and Phase 2 tasks use directed acyclic graph for dependency management and parallel execution
-- **Quality Gates**: Phase 1 documents use iterative quality loops (generate → check → improve) with structured LLM-as-Judge feedback
-- **Task Resilience**: Phase 2 tasks continue executing even if some tasks fail, with comprehensive error reporting
-- **Stateless Web App**: Uses SQLite database for project context and status (no in-memory state)
+- **Sequential Phase 1 Execution**: Phase 1 documents are generated sequentially with per-document approval workflow
+- **Async Execution**: Phase 2-4 agents use native async support for better performance and parallel execution
+- **DAG-Based Dependencies**: Phase 2-4 tasks use directed acyclic graph for dependency management and parallel execution
+- **Quality Gates**: Phase 1 documents use iterative quality loops (V1 → V2 → V3) with structured LLM-as-Judge feedback
+- **Document Versioning**: All document versions are tracked in SQLite database with approval status
+- **Approval System**: Per-document approval workflow with interactive web UI - each Phase 1 document waits for user approval
+- **Task Resilience**: Phase 2-4 tasks continue executing even if some tasks fail, with comprehensive error reporting
+- **Stateless Web App**: Uses SQLite database for project context, status, and document versions (no in-memory state)
 - **WebSocket Support**: Real-time progress updates with WebSocket status display and automatic fallback to HTTP polling
 - **Structured Quality Feedback**: LLM-as-Judge provides structured JSON feedback for precise document improvement
