@@ -17,7 +17,7 @@ class WorkflowTask:
     - Phase 2: Technical Documentation & Implementation
     - Phase 3: Development & Testing
     - Phase 4: User & Support
-    - Phase 5: Management & Operations
+    - Phase 5: (Currently empty - management documents moved to Phase 1)
     """
     task_id: str
     agent_type: AgentType
@@ -42,7 +42,7 @@ Phase2Task = WorkflowTask  # Alias for backward compatibility
 # Unified Workflow Task DAG Configuration
 # All tasks for all phases (1-5) are defined here
 # Tasks are organized by phase number for sequential execution
-# NOTE: Phase 1 (requirements, project_charter, business_model, marketing_plan, user_stories) requires user approval before proceeding
+# NOTE: Phase 1 (requirements, project_charter, user_stories, business_model, marketing_plan, pm_doc, stakeholder_doc) requires user approval before proceeding
 WORKFLOW_TASKS_CONFIG: Dict[str, WorkflowTask] = {
     # ========== PHASE 1: Strategic & Business Foundation Documents (REQUIRES USER APPROVAL) ==========
     # These are the strategic and business documents that define the project foundation.
@@ -94,6 +94,26 @@ WORKFLOW_TASKS_CONFIG: Dict[str, WorkflowTask] = {
         phase_number=1,
         dependencies=[AgentType.BUSINESS_MODEL, AgentType.PROJECT_CHARTER],
         kwargs_builder="with_business",
+        quality_threshold=80.0,
+        team_only=True
+    ),
+    "pm_doc": WorkflowTask(
+        task_id="pm_doc",
+        agent_type=AgentType.PM_DOCUMENTATION,
+        output_filename="project_plan.md",
+        phase_number=1,
+        dependencies=[AgentType.PROJECT_CHARTER],
+        kwargs_builder="with_charter",
+        quality_threshold=80.0,
+        team_only=True
+    ),
+    "stakeholder_doc": WorkflowTask(
+        task_id="stakeholder_doc",
+        agent_type=AgentType.STAKEHOLDER_COMMUNICATION,
+        output_filename="stakeholder_summary.md",
+        phase_number=1,
+        dependencies=[AgentType.PM_DOCUMENTATION],
+        kwargs_builder="with_pm",
         quality_threshold=80.0,
         team_only=True
     ),
@@ -178,23 +198,9 @@ WORKFLOW_TASKS_CONFIG: Dict[str, WorkflowTask] = {
         dependencies=[AgentType.TECHNICAL_DOCUMENTATION],
         kwargs_builder="simple_tech"
     ),
-    # ========== PHASE 5: Management & Operations Documents ==========
-    "pm_doc": WorkflowTask(
-        task_id="pm_doc",
-        agent_type=AgentType.PM_DOCUMENTATION,
-        output_filename="project_plan.md",
-        phase_number=5,
-        dependencies=[AgentType.PROJECT_CHARTER],
-        kwargs_builder="with_charter"
-    ),
-    "stakeholder_doc": WorkflowTask(
-        task_id="stakeholder_doc",
-        agent_type=AgentType.STAKEHOLDER_COMMUNICATION,
-        output_filename="stakeholder_summary.md",
-        phase_number=5,
-        dependencies=[AgentType.PM_DOCUMENTATION],
-        kwargs_builder="with_pm"
-    ),
+    # ========== PHASE 5: (Empty - all management documents moved to Phase 1) ==========
+    # Note: PM Documentation and Stakeholder Communication have been moved to Phase 1
+    # as they are strategic foundation documents
 }
 
 # Backward compatibility: Keep old config names for existing code
@@ -665,12 +671,12 @@ def get_available_phases(profile: str = "team") -> List[int]:
         Note: Phase 1 is always executed first and requires approval
     """
     # Phase structure:
-    # Phase 1: Strategic & Business Foundation (requirements, project_charter, user_stories, business_model, marketing_plan) - requires approval
+    # Phase 1: Strategic & Business Foundation (requirements, project_charter, user_stories, business_model, marketing_plan, pm_doc, stakeholder_doc) - requires approval
     # Phase 2: Technical Documentation (technical_doc, database, API, setup)
     # Phase 3: Development & Testing (dev_doc, test_doc)
     # Phase 4: User & Support (user_doc, support_playbook, legal)
-    # Phase 5: Management & Operations (pm_doc, stakeholder_doc)
-    return [2, 3, 4, 5]
+    # Phase 5: (Empty - all management documents moved to Phase 1)
+    return [2, 3, 4]
 
 
 def build_task_dependencies(tasks: List[WorkflowTask]) -> Dict[str, List[str]]:
