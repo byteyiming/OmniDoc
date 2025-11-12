@@ -13,11 +13,11 @@ class WorkflowTask:
     Unified configuration for all workflow tasks (Phase 1-5)
     
     This dataclass supports all phases of the workflow:
-    - Phase 1: Core Foundation (requires approval, has quality gates)
-    - Phase 2: Technical Implementation
+    - Phase 1: Strategic & Business Foundation (requires approval, has quality gates)
+    - Phase 2: Technical Documentation & Implementation
     - Phase 3: Development & Testing
     - Phase 4: User & Support
-    - Phase 5: Business & Management
+    - Phase 5: Management & Operations
     """
     task_id: str
     agent_type: AgentType
@@ -42,10 +42,10 @@ Phase2Task = WorkflowTask  # Alias for backward compatibility
 # Unified Workflow Task DAG Configuration
 # All tasks for all phases (1-5) are defined here
 # Tasks are organized by phase number for sequential execution
-# NOTE: Phase 1 (requirements, technical_spec) requires user approval before proceeding
+# NOTE: Phase 1 (requirements, project_charter, business_model, marketing_plan, user_stories) requires user approval before proceeding
 WORKFLOW_TASKS_CONFIG: Dict[str, WorkflowTask] = {
-    # ========== PHASE 1: Core Foundation Documents (REQUIRES USER APPROVAL) ==========
-    # These are the essential documents that define the project foundation.
+    # ========== PHASE 1: Strategic & Business Foundation Documents (REQUIRES USER APPROVAL) ==========
+    # These are the strategic and business documents that define the project foundation.
     # After Phase 1 completes, the workflow pauses for user review and approval.
     "requirements": WorkflowTask(
         task_id="requirements",
@@ -57,18 +57,60 @@ WORKFLOW_TASKS_CONFIG: Dict[str, WorkflowTask] = {
         quality_threshold=80.0,
         team_only=False
     ),
+    "project_charter": WorkflowTask(
+        task_id="project_charter",
+        agent_type=AgentType.PROJECT_CHARTER,
+        output_filename="project_charter.md",
+        phase_number=1,
+        dependencies=[AgentType.REQUIREMENTS_ANALYST],
+        kwargs_builder="with_requirements",
+        quality_threshold=80.0,
+        team_only=True
+    ),
+    "user_stories": WorkflowTask(
+        task_id="user_stories",
+        agent_type=AgentType.USER_STORIES,
+        output_filename="user_stories.md",
+        phase_number=1,
+        dependencies=[AgentType.REQUIREMENTS_ANALYST, AgentType.PROJECT_CHARTER],
+        kwargs_builder="with_charter",
+        quality_threshold=80.0,
+        team_only=True
+    ),
+    "business_model": WorkflowTask(
+        task_id="business_model",
+        agent_type=AgentType.BUSINESS_MODEL,
+        output_filename="business_model.md",
+        phase_number=1,
+        dependencies=[AgentType.PROJECT_CHARTER],
+        kwargs_builder="with_charter",
+        quality_threshold=80.0,
+        team_only=True
+    ),
+    "marketing_plan": WorkflowTask(
+        task_id="marketing_plan",
+        agent_type=AgentType.MARKETING_PLAN,
+        output_filename="marketing_plan.md",
+        phase_number=1,
+        dependencies=[AgentType.BUSINESS_MODEL, AgentType.PROJECT_CHARTER],
+        kwargs_builder="with_business",
+        quality_threshold=80.0,
+        team_only=True
+    ),
+    # ========== PHASE 2: Technical Documentation ==========
+    # Technical specification document that builds on Phase 1 foundation
     "technical_doc": WorkflowTask(
         task_id="technical_doc",
         agent_type=AgentType.TECHNICAL_DOCUMENTATION,
         output_filename="technical_spec.md",
-        phase_number=1,
-        dependencies=[AgentType.REQUIREMENTS_ANALYST],
+        phase_number=2,
+        dependencies=[AgentType.REQUIREMENTS_ANALYST, AgentType.USER_STORIES],
         kwargs_builder="with_user_stories",  # Will use requirements if user_stories not available
         quality_threshold=80.0,
         team_only=False
     ),
-    # ========== PHASE 2: Technical Implementation Documents ==========
-    # These documents build on the approved Phase 1 foundation
+    # ========== PHASE 2 (continued): Technical Implementation Documents ==========
+    # These documents build on the technical specification
     "database_schema": WorkflowTask(
         task_id="database_schema",
         agent_type=AgentType.DATABASE_SCHEMA,
@@ -120,14 +162,6 @@ WORKFLOW_TASKS_CONFIG: Dict[str, WorkflowTask] = {
         dependencies=[AgentType.REQUIREMENTS_ANALYST],
         kwargs_builder="simple_req"
     ),
-    "legal_doc": WorkflowTask(
-        task_id="legal_doc",
-        agent_type=AgentType.LEGAL_COMPLIANCE,
-        output_filename="legal_compliance.md",
-        phase_number=4,
-        dependencies=[AgentType.TECHNICAL_DOCUMENTATION],
-        kwargs_builder="simple_tech"
-    ),
     "support_playbook": WorkflowTask(
         task_id="support_playbook",
         agent_type=AgentType.SUPPORT_PLAYBOOK,
@@ -136,39 +170,15 @@ WORKFLOW_TASKS_CONFIG: Dict[str, WorkflowTask] = {
         dependencies=[AgentType.USER_DOCUMENTATION],
         kwargs_builder="with_user_doc"
     ),
-    # ========== PHASE 5: Business & Management Documents ==========
-    "project_charter": WorkflowTask(
-        task_id="project_charter",
-        agent_type=AgentType.PROJECT_CHARTER,
-        output_filename="project_charter.md",
-        phase_number=5,
-        dependencies=[AgentType.REQUIREMENTS_ANALYST],
-        kwargs_builder="with_requirements"
+    "legal_doc": WorkflowTask(
+        task_id="legal_doc",
+        agent_type=AgentType.LEGAL_COMPLIANCE,
+        output_filename="legal_compliance.md",
+        phase_number=4,
+        dependencies=[AgentType.TECHNICAL_DOCUMENTATION],
+        kwargs_builder="simple_tech"
     ),
-    "user_stories": WorkflowTask(
-        task_id="user_stories",
-        agent_type=AgentType.USER_STORIES,
-        output_filename="user_stories.md",
-        phase_number=5,
-        dependencies=[AgentType.REQUIREMENTS_ANALYST, AgentType.PROJECT_CHARTER],
-        kwargs_builder="with_charter"
-    ),
-    "business_model": WorkflowTask(
-        task_id="business_model",
-        agent_type=AgentType.BUSINESS_MODEL,
-        output_filename="business_model.md",
-        phase_number=5,
-        dependencies=[AgentType.PROJECT_CHARTER],
-        kwargs_builder="with_charter"
-    ),
-    "marketing_plan": WorkflowTask(
-        task_id="marketing_plan",
-        agent_type=AgentType.MARKETING_PLAN,
-        output_filename="marketing_plan.md",
-        phase_number=5,
-        dependencies=[AgentType.BUSINESS_MODEL, AgentType.PROJECT_CHARTER],
-        kwargs_builder="with_business"
-    ),
+    # ========== PHASE 5: Management & Operations Documents ==========
     "pm_doc": WorkflowTask(
         task_id="pm_doc",
         agent_type=AgentType.PM_DOCUMENTATION,
@@ -655,11 +665,11 @@ def get_available_phases(profile: str = "team") -> List[int]:
         Note: Phase 1 is always executed first and requires approval
     """
     # Phase structure:
-    # Phase 1: Core Foundation (requirements, technical_spec) - requires approval
-    # Phase 2: Technical Implementation (database, API, setup)
+    # Phase 1: Strategic & Business Foundation (requirements, project_charter, user_stories, business_model, marketing_plan) - requires approval
+    # Phase 2: Technical Documentation (technical_doc, database, API, setup)
     # Phase 3: Development & Testing (dev_doc, test_doc)
-    # Phase 4: User & Support (user_doc, legal, support)
-    # Phase 5: Business & Management (charter, user_stories, business, marketing, pm, stakeholder)
+    # Phase 4: User & Support (user_doc, support_playbook, legal)
+    # Phase 5: Management & Operations (pm_doc, stakeholder_doc)
     return [2, 3, 4, 5]
 
 
