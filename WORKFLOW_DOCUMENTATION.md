@@ -245,47 +245,53 @@ final_docs = {}  # Store final document content
 document_file_paths = {}  # Store file paths
 ```
 
-### Phase 1: Foundational Documents (Quality Gate)
+### Phase 1: Strategic & Business Foundation Documents (Sequential with Approval)
 
-**Goal**: Generate high-quality foundational documents using iterative quality loops
+**Goal**: Generate high-quality strategic and business foundation documents using iterative quality loops with per-document user approval
 
-**Process**: For each foundational document:
+**Process**: For each foundational document (executed sequentially):
 1. **Generate V1**: Agent generates initial document
 2. **Check Quality**: Quality checker evaluates document (score 0-100)
-3. **Improve if Needed**: If score < threshold, Document Improver enhances it
-4. **Return Final**: Return final document (V1 or V2)
+3. **Iterative Improvement**: If score < threshold, incrementally improve (V1 → V2 → V3, max 3 iterations)
+4. **Save Version**: Save each version to database
+5. **Wait for Approval**: Wait for user approval before proceeding to next document
+6. **Return Final**: Return final approved document
 
 **Documents Generated:**
-1. **Requirements** (threshold: 80.0)
+1. **Requirements** (threshold: 80.0, all profiles)
    - Agent: `RequirementsAnalyst`
    - Input: `user_idea`
    - Output: `requirements.md`
-   - Quality Loop: Generate → Check → Improve (if score < 80.0)
+   - Quality Loop: Generate → Check → Improve iteratively (V1 → V2 → V3) until score >= 80.0
+   - Approval: Required before proceeding
 
-2. **Project Charter** (Team only, threshold: 75.0)
+2. **Project Charter** (Team only, threshold: 80.0)
    - Agent: `ProjectCharterAgent`
    - Input: `requirements_summary`
    - Output: `project_charter.md`
-   - Quality Loop: Generate → Check → Improve (if score < 75.0)
+   - Quality Loop: Generate → Check → Improve iteratively (V1 → V2 → V3) until score >= 80.0
+   - Approval: Required before proceeding
 
-3. **User Stories** (threshold: 75.0)
+3. **User Stories** (Team only, threshold: 80.0)
    - Agent: `UserStoriesAgent`
    - Input: `requirements_summary`, `project_charter_summary`
    - Output: `user_stories.md`
-   - Quality Loop: Generate → Check → Improve (if score < 75.0)
+   - Quality Loop: Generate → Check → Improve iteratively (V1 → V2 → V3) until score >= 80.0
+   - Approval: Required before proceeding
 
-4. **Technical Documentation** (threshold: 70.0)
-   - Agent: `TechnicalDocumentationAgent`
-   - Input: `requirements_summary`, `user_stories_summary`
-   - Output: `technical_spec.md`
-   - Quality Loop: Generate → Check → Improve (if score < 70.0)
+4. **Business Model** (Team only, threshold: 80.0)
+   - Agent: `BusinessModelAgent`
+   - Input: `project_charter_summary`
+   - Output: `business_model.md`
+   - Quality Loop: Generate → Check → Improve iteratively (V1 → V2 → V3) until score >= 80.0
+   - Approval: Required before proceeding
 
-5. **Database Schema** (threshold: 70.0)
-   - Agent: `DatabaseSchemaAgent`
-   - Input: `requirements_summary`, `technical_summary`
-   - Output: `database_schema.md`
-   - Quality Loop: Generate → Check → Improve (if score < 70.0)
-   - **Note**: Moved from Phase 2 to Phase 1 to ensure API Documentation and Setup Guide can use the database schema
+5. **Marketing Plan** (Team only, threshold: 80.0)
+   - Agent: `MarketingPlanAgent`
+   - Input: `business_model_summary`, `project_charter_summary`
+   - Output: `marketing_plan.md`
+   - Quality Loop: Generate → Check → Improve iteratively (V1 → V2 → V3) until score >= 80.0
+   - Approval: Required before proceeding
 
 **Quality Loop Details** (`_run_agent_with_quality_loop`):
 
@@ -329,9 +335,9 @@ def _run_agent_with_quality_loop(
 - Document content and metadata stored for later use
 - Dependencies tracked for Phase 2
 
-### Phase 2: Secondary Documents (Parallel DAG Execution)
+### Phase 2: Technical Documentation & Implementation (Parallel DAG Execution)
 
-**Goal**: Generate all remaining documents in parallel for maximum speed
+**Goal**: Generate technical documents in parallel for maximum speed
 
 **Process**: 
 1. **DAG Configuration**: Load task dependencies from `workflow_dag.py`
@@ -340,31 +346,50 @@ def _run_agent_with_quality_loop(
 4. **Parallel Execution**: Execute independent tasks in parallel using `AsyncParallelExecutor`
 5. **Dependency Waiting**: Wait for dependencies before executing dependent tasks
 
-**Documents Generated** (depends on profile):
+**Documents Generated**:
 
-**Team Profile** (all documents):
-- API Documentation
-- Setup Guide
-- Developer Documentation
-- Test Documentation
-- User Documentation
-- Legal Compliance
-- Support Playbook
-- PM Documentation
-- Stakeholder Communication
-- Business Model
-- Marketing Plan
+1. **Technical Documentation** (all profiles)
+   - Agent: `TechnicalDocumentationAgent`
+   - Input: `requirements_summary`, `user_stories_summary` (if available)
+   - Output: `technical_spec.md`
+   - Dependencies: Requirements, User Stories (if team profile)
 
-**Individual Profile** (core documents only):
-- API Documentation
-- Setup Guide
-- Developer Documentation
-- Test Documentation
-- User Documentation
-- Legal Compliance
-- Support Playbook
+2. **Database Schema** (all profiles)
+   - Agent: `DatabaseSchemaAgent`
+   - Input: `requirements_summary`, `technical_summary`
+   - Output: `database_schema.md`
+   - Dependencies: Requirements, Technical Documentation
 
-**Note**: `Database Schema` has been moved to Phase 1 (see above) to ensure API Documentation and Setup Guide can access the database schema information.
+3. **API Documentation** (all profiles)
+   - Agent: `APIDocumentationAgent`
+   - Input: `technical_summary`, `database_schema_summary`
+   - Output: `api_documentation.md`
+   - Dependencies: Technical Documentation, Database Schema
+
+4. **Setup Guide** (all profiles)
+   - Agent: `SetupGuideAgent`
+   - Input: `api_doc_summary`, `technical_summary`, `database_schema_summary`
+   - Output: `setup_guide.md`
+   - Dependencies: API Documentation, Technical Documentation, Database Schema
+
+### Phase 3: Development & Testing Documents (Parallel Execution)
+
+**Documents Generated**:
+- Developer Documentation (depends on API Documentation, Technical Documentation)
+- Test Documentation (depends on Technical Documentation)
+
+### Phase 4: User & Support Documents (Parallel Execution)
+
+**Documents Generated**:
+- User Documentation (depends on Requirements)
+- Support Playbook (depends on User Documentation)
+- Legal Compliance (depends on Technical Documentation)
+
+### Phase 5: Management & Operations Documents (Parallel Execution)
+
+**Documents Generated** (Team only):
+- PM Documentation (depends on Project Charter)
+- Stakeholder Communication (depends on PM Documentation)
 
 **DAG Structure** (`workflow_dag.py`):
 
@@ -785,12 +810,19 @@ Attempt 4: Wait 8.0 seconds (if max_retries > 3)
 6. Frontend connects to WebSocket for real-time updates
 
 ### Document Generation
-1. **Phase 1**: Foundational documents with quality gates (DAG-based, parallel execution with dependencies)
-   - Requirements, Project Charter (team only), User Stories, Technical Documentation, Database Schema
-2. **Phase 2**: Secondary documents in parallel (DAG-based, async)
-   - API Documentation, Setup Guide, Developer Documentation, Test Documentation, User Documentation, Legal Compliance, Support Playbook, PM Documentation (team only), Stakeholder Communication (team only), Business Model (team only), Marketing Plan (team only)
-3. **Phase 3**: Final packaging (cross-ref, review, convert)
-4. **Phase 4**: Code analysis (optional, if codebase_path provided)
+1. **Phase 1**: Strategic & Business foundation documents (sequential execution with per-document approval)
+   - Requirements, Project Charter (team only), User Stories (team only), Business Model (team only), Marketing Plan (team only)
+   - Each document: Generate → Quality Check → Iterative Improvement (V1 → V2 → V3) → Wait for Approval
+2. **Phase 2**: Technical documentation & implementation (parallel execution with DAG)
+   - Technical Documentation, Database Schema, API Documentation, Setup Guide
+3. **Phase 3**: Development & Testing documents (parallel execution)
+   - Developer Documentation, Test Documentation
+4. **Phase 4**: User & Support documents (parallel execution)
+   - User Documentation, Support Playbook, Legal Compliance
+5. **Phase 5**: Management & Operations documents (parallel execution, team only)
+   - PM Documentation, Stakeholder Communication
+6. **Final Packaging**: Cross-referencing, quality review, format conversion
+7. **Code Analysis**: Optional codebase analysis (if codebase_path provided)
 
 ### Behind the Scenes
 1. **LLM Provider**: Gemini (all agents, hardcoded)
