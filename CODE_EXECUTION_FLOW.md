@@ -222,7 +222,7 @@ if workflow_mode == "code_first" and codebase_path:
 
 ---
 
-## 📍 第五步：Phase 1 - 基础文档生成（DAG + 质量门控）
+## 📍 第五步：Phase 1 - 战略与商业基础文档生成（顺序执行 + 质量门控 + 审批）
 
 ### 5.1 获取 Phase 1 任务配置
 
@@ -235,15 +235,37 @@ phase1_tasks = get_phase1_tasks_for_profile(profile=profile)
 #         task_id="requirements",
 #         agent_type=AgentType.REQUIREMENTS_ANALYST,
 #         dependencies=[],  # 没有依赖
-#         quality_threshold=80.0
+#         quality_threshold=80.0,
+#         team_only=False
 #     ),
 #     Phase1Task(
 #         task_id="project_charter",
 #         agent_type=AgentType.PROJECT_CHARTER,
-#         dependencies=["requirements"],  # 依赖 requirements
-#         quality_threshold=75.0
+#         dependencies=[AgentType.REQUIREMENTS_ANALYST],  # 依赖 requirements
+#         quality_threshold=80.0,
+#         team_only=True  # 仅团队项目
 #     ),
-#     ...
+#     Phase1Task(
+#         task_id="user_stories",
+#         agent_type=AgentType.USER_STORIES,
+#         dependencies=[AgentType.REQUIREMENTS_ANALYST, AgentType.PROJECT_CHARTER],
+#         quality_threshold=80.0,
+#         team_only=True
+#     ),
+#     Phase1Task(
+#         task_id="business_model",
+#         agent_type=AgentType.BUSINESS_MODEL,
+#         dependencies=[AgentType.PROJECT_CHARTER],
+#         quality_threshold=80.0,
+#         team_only=True
+#     ),
+#     Phase1Task(
+#         task_id="marketing_plan",
+#         agent_type=AgentType.MARKETING_PLAN,
+#         dependencies=[AgentType.BUSINESS_MODEL, AgentType.PROJECT_CHARTER],
+#         quality_threshold=80.0,
+#         team_only=True
+#     ),
 # ]
 ```
 
@@ -262,23 +284,27 @@ phase1_dependency_map = build_phase1_task_dependencies(phase1_tasks)
 # }
 ```
 
-### 5.3 创建异步执行器
+### 5.3 顺序执行 Phase 1 任务（不再并行）
 
 ```python
-# 创建异步并行执行器
-executor = AsyncParallelExecutor(max_workers=4)
+# Phase 1 任务按依赖顺序顺序执行，每个任务完成后等待用户审批
+ordered_phase1_tasks = get_task_order(phase1_tasks)  # 按依赖关系排序
 
-# 为每个任务创建异步协程
-for task in phase1_tasks:
-    task_coro = create_phase1_task_coro(task)()
-    executor.add_task(
-        task_id=task.task_id,
-        coro=task_coro,
-        dependencies=phase1_dependency_map[task.task_id]
-    )
-
-# 执行任务（自动处理依赖关系）
-phase1_task_results = await executor.execute()
+for task in ordered_phase1_tasks:
+    # 1. 生成文档（带质量门控）
+    file_path, content = await self._async_run_agent_with_quality_loop(...)
+    
+    # 2. 保存到数据库
+    await context_manager.save_document_version(...)
+    
+    # 3. 等待用户审批
+    while True:
+        approval_status = context_manager.is_document_approved(project_id, task.agent_type)
+        if approval_status is True:
+            break  # 批准，继续下一个
+        elif approval_status is False:
+            return  # 拒绝，停止工作流
+        await asyncio.sleep(2)  # 每2秒检查一次
 ```
 
 ### 5.4 执行单个 Phase 1 任务（带质量门控）
@@ -381,26 +407,39 @@ async def _async_run_agent_with_quality_loop(
 
 ---
 
-## 📍 第六步：Phase 2 - 并行生成次级文档
+## 📍 第六步：Phase 2 - 技术文档与实现（并行执行）
 
 ### 6.1 获取 Phase 2 任务配置
 
 ```python
 # 从 workflow_dag.py 获取 Phase 2 任务
-phase2_tasks = get_phase2_tasks_for_profile(profile=profile)
+phase2_tasks = get_tasks_for_phase(profile=profile, phase_number=2)
 # 返回：
 # [
-#     Phase2Task(
-#         task_id="api_documentation",
+#     WorkflowTask(
+#         task_id="technical_doc",
+#         agent_type=AgentType.TECHNICAL_DOCUMENTATION,
+#         phase_number=2,
+#         dependencies=[AgentType.REQUIREMENTS_ANALYST, AgentType.USER_STORIES]
+#     ),
+#     WorkflowTask(
+#         task_id="database_schema",
+#         agent_type=AgentType.DATABASE_SCHEMA,
+#         phase_number=2,
+#         dependencies=[AgentType.REQUIREMENTS_ANALYST, AgentType.TECHNICAL_DOCUMENTATION]
+#     ),
+#     WorkflowTask(
+#         task_id="api_doc",
 #         agent_type=AgentType.API_DOCUMENTATION,
+#         phase_number=2,
 #         dependencies=[AgentType.TECHNICAL_DOCUMENTATION, AgentType.DATABASE_SCHEMA]
 #     ),
-#     Phase2Task(
+#     WorkflowTask(
 #         task_id="setup_guide",
 #         agent_type=AgentType.SETUP_GUIDE,
-#         dependencies=[AgentType.API_DOCUMENTATION, AgentType.TECHNICAL_DOCUMENTATION]
+#         phase_number=2,
+#         dependencies=[AgentType.API_DOCUMENTATION, AgentType.TECHNICAL_DOCUMENTATION, AgentType.DATABASE_SCHEMA]
 #     ),
-#     ...
 # ]
 ```
 
@@ -772,27 +811,36 @@ window.open(`/api/download-all/${projectId}`);
    ↓
 8. Phase 0: 代码分析（如果 code-first）
    ↓
-9. Phase 1: 基础文档（DAG + 质量门控）
-   ├─ RequirementsAnalyst → 生成需求文档
-   ├─ ProjectCharterAgent → 生成项目章程
-   ├─ UserStoriesAgent → 生成用户故事
-   ├─ TechnicalDocumentationAgent → 生成技术文档
-   └─ DatabaseSchemaAgent → 生成数据库设计
+9. Phase 1: 战略与商业基础文档（顺序执行 + 质量门控 + 审批）
+   ├─ RequirementsAnalyst → 生成需求文档 → ⏸️ 等待审批
+   ├─ ProjectCharterAgent → 生成项目章程 [仅团队] → ⏸️ 等待审批
+   ├─ UserStoriesAgent → 生成用户故事 [仅团队] → ⏸️ 等待审批
+   ├─ BusinessModelAgent → 生成商业模式 [仅团队] → ⏸️ 等待审批
+   └─ MarketingPlanAgent → 生成营销计划 [仅团队] → ⏸️ 等待审批
    ↓
-10. Phase 2: 次级文档（并行执行）
+10. Phase 2: 技术文档与实现（并行执行）
+    ├─ TechnicalDocumentationAgent → 生成技术文档
+    ├─ DatabaseSchemaAgent → 生成数据库设计
     ├─ APIDocumentationAgent → 生成 API 文档
-    ├─ SetupGuideAgent → 生成安装指南
-    ├─ DeveloperDocumentationAgent → 生成开发者文档
-    ├─ TestDocumentationAgent → 生成测试文档
-    └─ ... (更多文档)
+    └─ SetupGuideAgent → 生成安装指南
     ↓
-11. Phase 3: 最终包装
+11. Phase 3: 开发与测试文档（并行执行）
+    ├─ DeveloperDocumentationAgent → 生成开发者文档
+    └─ TestDocumentationAgent → 生成测试文档
+    ↓
+12. Phase 4: 用户与支持文档（并行执行）
+    ├─ UserDocumentationAgent → 生成用户文档
+    ├─ SupportPlaybookAgent → 生成支持手册
+    └─ LegalComplianceAgent → 生成法律合规文档
+    ↓
+13. Phase 5: 管理与运营文档（并行执行）
+    ├─ PMDocumentationAgent → 生成项目管理文档
+    └─ StakeholderCommunicationAgent → 生成利益相关者文档
+    ↓
+14. Phase 6: 最终包装
     ├─ CrossReferencer → 添加交叉引用
     ├─ QualityReviewerAgent → 生成质量报告
     └─ FormatConverterAgent → 转换格式（HTML/PDF/DOCX）
-    ↓
-12. Phase 4: 代码分析（如果 docs-first）
-    └─ CodeAnalystAgent → 分析代码并更新文档
     ↓
 13. 更新数据库状态为 "complete"
     ↓
