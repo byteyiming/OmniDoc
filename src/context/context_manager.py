@@ -200,18 +200,25 @@ class ContextManager:
             generated_at=datetime.fromisoformat(row["generated_at"])
         )
     
-    def save_agent_output(self, project_id: str, output: AgentOutput):
+    def save_agent_output(self, project_id: str, output: AgentOutput, version: Optional[int] = None):
         """
         Save agent output (thread-safe)
         
         Args:
             project_id: Project identifier
             output: AgentOutput to save
+            version: Optional version number (auto-incremented if None)
         """
         with self._lock:
             try:
                 cursor = self.connection.cursor()
-                output_id = f"{project_id}_{output.agent_type.value}"
+                
+                # Get next version number if not provided
+                if version is None:
+                    current_version = self.get_document_version(project_id, output.agent_type)
+                    version = current_version + 1
+                
+                output_id = f"{project_id}_{output.agent_type.value}_v{version}"
                 
                 # Ensure dependencies is a list (handle None or other types)
                 dependencies = output.dependencies
@@ -233,8 +240,8 @@ class ContextManager:
                     INSERT OR REPLACE INTO agent_outputs (
                         output_id, project_id, agent_type, document_type,
                         content, file_path, quality_score, status,
-                        dependencies, generated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        dependencies, generated_at, version, approved
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     output_id,
                     project_id,
@@ -245,7 +252,9 @@ class ContextManager:
                     output.quality_score,
                     output.status.value,
                     json.dumps(dependencies),
-                    generated_at_str
+                    generated_at_str,
+                    version,
+                    0  # Default: pending approval
                 ))
                 
                 self.connection.commit()
@@ -257,11 +266,15 @@ class ContextManager:
                 raise
     
     def get_agent_output(self, project_id: str, agent_type: AgentType) -> Optional[AgentOutput]:
-        """Get agent output for a project"""
+        """Get agent output for a project (latest version)"""
         cursor = self.connection.cursor()
-        output_id = f"{project_id}_{agent_type.value}"
         
-        cursor.execute("SELECT * FROM agent_outputs WHERE output_id = ?", (output_id,))
+        # Get the latest version of the document
+        cursor.execute("""
+            SELECT * FROM agent_outputs 
+            WHERE project_id = ? AND agent_type = ?
+            ORDER BY version DESC LIMIT 1
+        """, (project_id, agent_type.value))
         row = cursor.fetchone()
         
         if not row:

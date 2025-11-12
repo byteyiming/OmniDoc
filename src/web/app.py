@@ -1437,6 +1437,152 @@ async def get_phase1_documents(project_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class DocumentApprovalRequest(BaseModel):
+    """Request model for document approval"""
+    notes: Optional[str] = None  # Optional approval notes/comments
+
+
+@app.post("/api/approve-document/{project_id}/{agent_type}")
+async def approve_document(project_id: str, agent_type: str, request: Optional[DocumentApprovalRequest] = None):
+    """
+    Approve a specific document to proceed
+    
+    This endpoint allows users to review and approve individual documents
+    as they are generated in Phase 1.
+    """
+    try:
+        # Check if project exists
+        status = context_manager.get_project_status(project_id)
+        if not status:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Convert agent_type string to AgentType enum
+        try:
+            agent_type_enum = AgentType(agent_type)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid agent_type: {agent_type}")
+        
+        # Approve document
+        notes = request.notes if request else None
+        context_manager.approve_document(project_id, agent_type_enum, notes=notes)
+        
+        # Send WebSocket update
+        await websocket_manager.send_progress(project_id, {
+            "type": "document_approved",
+            "message": f"Document {agent_type} approved - continuing workflow",
+            "project_id": project_id,
+            "agent_type": agent_type
+        })
+        
+        return {
+            "project_id": project_id,
+            "agent_type": agent_type,
+            "status": "approved",
+            "message": f"Document {agent_type} approved. Workflow will continue.",
+            "notes": notes
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving document {agent_type} for project {project_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/reject-document/{project_id}/{agent_type}")
+async def reject_document(project_id: str, agent_type: str, request: Optional[DocumentApprovalRequest] = None):
+    """
+    Reject a specific document (stops workflow)
+    
+    This endpoint allows users to reject individual documents if they need
+    to make changes or restart the process.
+    """
+    try:
+        # Check if project exists
+        status = context_manager.get_project_status(project_id)
+        if not status:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Convert agent_type string to AgentType enum
+        try:
+            agent_type_enum = AgentType(agent_type)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid agent_type: {agent_type}")
+        
+        # Reject document
+        notes = request.notes if request else None
+        context_manager.reject_document(project_id, agent_type_enum, notes=notes)
+        
+        # Send WebSocket update
+        await websocket_manager.send_progress(project_id, {
+            "type": "document_rejected",
+            "message": f"Document {agent_type} rejected - workflow stopped",
+            "project_id": project_id,
+            "agent_type": agent_type
+        })
+        
+        return {
+            "project_id": project_id,
+            "agent_type": agent_type,
+            "status": "rejected",
+            "message": f"Document {agent_type} rejected. Workflow has been stopped.",
+            "notes": notes
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error rejecting document {agent_type} for project {project_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/document/{project_id}/{agent_type}")
+async def get_document(project_id: str, agent_type: str):
+    """
+    Get a specific document (latest version) for review
+    
+    Returns the latest version of a document that was generated,
+    ready for user review.
+    """
+    try:
+        status = context_manager.get_project_status(project_id)
+        if not status:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Convert agent_type string to AgentType enum
+        try:
+            agent_type_enum = AgentType(agent_type)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid agent_type: {agent_type}")
+        
+        # Get document from agent outputs (latest version)
+        document_output = context_manager.get_agent_output(project_id, agent_type_enum)
+        
+        if not document_output:
+            raise HTTPException(status_code=404, detail=f"Document {agent_type} not found for project {project_id}")
+        
+        # Get approval status
+        approval_status = context_manager.is_document_approved(project_id, agent_type_enum)
+        approval_status_str = "approved" if approval_status is True else ("rejected" if approval_status is False else "pending")
+        
+        # Get version
+        version = context_manager.get_document_version(project_id, agent_type_enum)
+        
+        return {
+            "project_id": project_id,
+            "agent_type": agent_type,
+            "version": version,
+            "status": approval_status_str,
+            "content": document_output.content,
+            "file_path": document_output.file_path,
+            "quality_score": document_output.quality_score,
+            "generated_at": document_output.generated_at.isoformat() if document_output.generated_at else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting document {agent_type} for project {project_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/download/{project_id}/{doc_type}")
 async def download_document(project_id: str, doc_type: str):
     """Download a generated document from database"""

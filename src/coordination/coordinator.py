@@ -554,28 +554,54 @@ Improvement Suggestions:
             score = 0
             quality_result_v1 = None
         
-        # 3. DECIDE AND IMPROVE (async)
-        if score >= quality_threshold:
-            logger.info(f"  ✅ [{agent_type.value}] V1 quality ({score:.2f}/100) meets threshold. Proceeding.")
-            return v1_file_path, v1_content
-        else:
-            logger.warning(f"  ⚠️  [{agent_type.value}] V1 quality ({score:.2f}/100) is below threshold. Triggering improvement...")
+        # Save V1 as version 1 to database
+        if self.context_manager:
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None,
+                    lambda: self.context_manager.save_document_version(
+                        project_id=project_id,
+                        agent_type=agent_type,
+                        content=v1_content,
+                        file_path=v1_file_path,
+                        quality_score=score,
+                        version=1
+                    )
+                )
+                logger.info(f"  💾 V1 saved as version 1 to database")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Could not save V1 to database: {e}")
+        
+        # 3. DECIDE AND IMPROVE (async) - Iterative improvement loop
+        current_version = 1
+        current_content = v1_content
+        current_file_path = v1_file_path
+        current_score = score
+        max_iterations = 3  # Maximum number of improvement iterations
+        
+        for iteration in range(1, max_iterations + 1):
+            if current_score >= quality_threshold:
+                logger.info(f"  ✅ [{agent_type.value}] Version {current_version} quality ({current_score:.2f}/100) meets threshold. Proceeding.")
+                return current_file_path, current_content
+            
+            logger.warning(f"  ⚠️  [{agent_type.value}] Version {current_version} quality ({current_score:.2f}/100) is below threshold. Iteration {iteration}/{max_iterations}...")
             
             # 3a. Get Actionable Feedback (async)
-            logger.info(f"  🔍 Step 3a: Generating quality feedback (async) for {agent_type.value}...")
+            logger.info(f"  🔍 Step 3a: Generating quality feedback for iteration {iteration} (async)...")
             try:
                 loop = asyncio.get_event_loop()
                 feedback_report = await loop.run_in_executor(
                     None,
-                    lambda: self.quality_reviewer.generate({agent_type.value: v1_content})
+                    lambda: self.quality_reviewer.generate({agent_type.value: current_content})
                 )
                 logger.info(f"  ✅ Quality feedback generated (async): {len(feedback_report)} characters")
             except Exception as e:
                 logger.warning(f"  ⚠️  Quality feedback generation failed: {e}, using simplified feedback")
                 feedback_report = f"""
-Quality Review for {agent_type.value}:
+Quality Review for {agent_type.value} (Version {current_version}):
 
-Current Score: {score:.2f}/100
+Current Score: {current_score:.2f}/100
 Threshold: {quality_threshold}
 
 Issues Found:
@@ -590,89 +616,124 @@ Improvement Suggestions:
 - Ensure technical accuracy
 """
             
-            # 3b. Improve V1 -> V2 (async)
-            logger.info(f"  🔧 Step 3b: Improving {agent_type.value} (V1 -> V2, async)...")
+            # 3b. Incremental Improvement (async) - Only improve what's missing
+            logger.info(f"  🔧 Step 3b: Incremental improvement iteration {iteration} (V{current_version} -> V{current_version + 1}, async)...")
             try:
-                # Pass quality score and details to improver for better context
-                quality_score_for_improver = score
+                # Get quality details for incremental improvement
                 quality_details_for_improver = None
-                
                 if quality_result_v1:
                     quality_details_for_improver = {
                         "word_count": quality_result_v1.get("word_count", {}),
                         "sections": quality_result_v1.get("sections", {}),
-                        "readability": quality_result_v1.get("readability", {})
+                        "readability": quality_result_v1.get("readability", {}),
+                        "current_score": current_score,
+                        "threshold": quality_threshold
                     }
                 
-                # Use improved method with quality context (async)
+                # Use incremental improvement method (async)
+                # This should only add/improve missing parts, not rewrite everything
                 loop = asyncio.get_event_loop()
                 improved_doc = await loop.run_in_executor(
                     None,
                     lambda: self.document_improver.improve_document(
-                        original_document=v1_content,
+                        original_document=current_content,  # Use current version as base
                         document_type=agent_type.value,
                         quality_feedback=feedback_report,
-                        quality_score=quality_score_for_improver,
-                        quality_details=quality_details_for_improver
+                        quality_score=current_score,
+                        quality_details=quality_details_for_improver,
+                        focus_areas=["missing_sections", "incomplete_sections", "low_quality_sections"]  # Focus on what's missing
                     )
                 )
                 
-                # Save improved document (async)
-                v2_file_path = await loop.run_in_executor(
+                # Save improved document as new version (async)
+                new_version = current_version + 1
+                improved_file_path = await loop.run_in_executor(
                     None,
                     lambda: self.file_manager.write_file(output_filename, improved_doc)
                 )
-                logger.info(f"Improved {agent_type.value} saved (async) to: {v2_file_path}")
+                logger.info(f"Incremental improvement V{new_version} saved (async) to: {improved_file_path}")
                 
-                # Save to context (async)
+                # Save new version to database
                 if self.context_manager:
                     try:
-                        from src.context.shared_context import AgentOutput, DocumentStatus
-                        from datetime import datetime
-                        output = AgentOutput(
-                            agent_type=agent_type,
-                            document_type=agent_type.value,
-                            content=improved_doc,
-                            file_path=v2_file_path,
-                            status=DocumentStatus.COMPLETE,
-                            generated_at=datetime.now()
-                )
+                        loop = asyncio.get_event_loop()
                         await loop.run_in_executor(
                             None,
-                            lambda: self.context_manager.save_agent_output(project_id, output)
+                            lambda: self.context_manager.save_document_version(
+                                project_id=project_id,
+                                agent_type=agent_type,
+                                content=improved_doc,
+                                file_path=improved_file_path,
+                                quality_score=None,  # Will be checked next
+                                version=new_version
+                            )
                         )
-                        logger.debug(f"Improved {agent_type.value} saved to context (async)")
+                        logger.info(f"  💾 V{new_version} saved to database")
                     except Exception as e:
-                        logger.warning(f"Could not save improved document to context: {e}")
+                        logger.warning(f"Could not save V{new_version} to database: {e}")
                 
-                v2_content = improved_doc
-                logger.info(f"  ✅ V2 (Improved, async) generated: {len(v2_content)} characters")
-                
-                # Optionally check V2 quality
+                # Check quality of improved version
+                logger.info(f"  🔍 Checking quality of V{new_version}...")
                 try:
                     checklist = await loop.run_in_executor(
                         None,
                         lambda: self.quality_reviewer.document_type_checker.get_checklist_for_agent(agent_type)
                     )
                     if checklist:
-                        quality_result_v2 = await loop.run_in_executor(
+                        quality_result_new = await loop.run_in_executor(
                             None,
                             lambda: self.quality_reviewer.document_type_checker.check_quality_for_type(
-                                v2_content,
+                                improved_doc,
                                 document_type=agent_type.value
                             )
                         )
-                        v2_score = quality_result_v2.get("overall_score", 0)
-                        logger.info(f"  📊 V2 Quality Score (async): {v2_score:.2f}/100 (improvement: +{v2_score - score:.2f})")
+                        new_score = quality_result_new.get("overall_score", 0)
+                        improvement = new_score - current_score
+                        logger.info(f"  📊 V{new_version} Quality Score (async): {new_score:.2f}/100 (improvement: +{improvement:.2f})")
+                        
+                        # Update for next iteration
+                        current_version = new_version
+                        current_content = improved_doc
+                        current_file_path = improved_file_path
+                        current_score = new_score
+                        quality_result_v1 = quality_result_new  # Update for next iteration
+                    else:
+                        # Fallback quality check
+                        quality_result_new = await loop.run_in_executor(
+                            None,
+                            lambda: self.quality_reviewer.quality_checker.check_quality(improved_doc)
+                        )
+                        new_score = quality_result_new.get("overall_score", 0)
+                        improvement = new_score - current_score
+                        logger.info(f"  📊 V{new_version} Quality Score (async): {new_score:.2f}/100 (improvement: +{improvement:.2f})")
+                        
+                        current_version = new_version
+                        current_content = improved_doc
+                        current_file_path = improved_file_path
+                        current_score = new_score
+                        quality_result_v1 = quality_result_new
                 except Exception as e:
-                    logger.debug(f"  ⚠️  V2 quality check skipped: {e}")
+                    logger.warning(f"  ⚠️  Quality check for V{new_version} failed: {e}, assuming improvement")
+                    # Still update to new version even if quality check fails
+                    current_version = new_version
+                    current_content = improved_doc
+                    current_file_path = improved_file_path
                 
-                logger.info(f"  🎉 [{agent_type.value}] Quality loop completed (async): V1 ({score:.2f}) -> V2 (improved)")
-                return v2_file_path, v2_content
+                logger.info(f"  ✅ Iteration {iteration} completed: V{current_version} (score: {current_score:.2f})")
+                
             except Exception as e:
-                logger.error(f"  ❌ Improvement failed for {agent_type.value}: {e}")
-                logger.warning(f"  ⚠️  Falling back to V1 for {agent_type.value}")
-                return v1_file_path, v1_content
+                logger.error(f"  ❌ Improvement iteration {iteration} failed for {agent_type.value}: {e}")
+                if iteration == 1:
+                    logger.warning(f"  ⚠️  Falling back to V1 for {agent_type.value}")
+                    return v1_file_path, v1_content
+                else:
+                    # Return the best version we have so far
+                    logger.warning(f"  ⚠️  Returning best version so far (V{current_version})")
+                    break
+        
+        # Return the best version we achieved
+        logger.info(f"  🎉 [{agent_type.value}] Quality loop completed: Final version V{current_version} (score: {current_score:.2f})")
+        return current_file_path, current_content
     
     def _generate_technical_doc(self, req_summary, project_id):
         """Helper for parallel technical doc generation"""

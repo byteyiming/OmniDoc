@@ -164,20 +164,38 @@ function handleWebSocketMessage(message) {
             }
             break;
         case 'phase_1':
-            // Phase 1 complete - show review UI
-            if (message.task_id === 'all' && message.status === 'complete') {
-                showPhase1Review();
+            // Phase 1 document complete - show review UI for this specific document
+            if (message.status === 'complete') {
+                const docName = message.document || message.task_id || 'Document';
+                showDocumentReview(docName, message.task_id);
+            } else if (message.status === 'awaiting_approval') {
+                const docName = message.document || message.task_id || 'Document';
+                showDocumentReview(docName, message.task_id);
             }
             break;
+        case 'document_approved':
+            // Document approved - hide review UI and continue
+            hideDocumentReview();
+            showStatus(`Document ${message.agent_type || 'document'} approved! Continuing...`, 'success');
+            break;
+        case 'document_rejected':
+            // Document rejected - hide review UI and show error
+            hideDocumentReview();
+            showStatus(`Document ${message.agent_type || 'document'} rejected. Workflow stopped.`, 'error');
+            generateBtn.disabled = false;
+            generateBtn.textContent = 'Generate Documentation';
+            generateBtn.classList.remove('loading');
+            progressDiv.classList.add('hidden');
+            break;
         case 'phase1_approved':
-            // Phase 1 approved - hide review UI and continue
-            hidePhase1Review();
+            // Phase 1 approved - hide review UI and continue (legacy)
+            hideDocumentReview();
             showStatus('Phase 1 approved! Continuing with Phase 2+...', 'success');
             updateProgress(30);
             break;
         case 'phase1_rejected':
-            // Phase 1 rejected - hide review UI and show error
-            hidePhase1Review();
+            // Phase 1 rejected - hide review UI and show error (legacy)
+            hideDocumentReview();
             showStatus('Phase 1 rejected. Workflow stopped.', 'error');
             generateBtn.disabled = false;
             generateBtn.textContent = 'Generate Documentation';
@@ -191,7 +209,7 @@ function handleWebSocketMessage(message) {
             generateBtn.textContent = 'Generate Documentation';
             generateBtn.classList.remove('loading');
             progressDiv.classList.add('hidden');
-            hidePhase1Review(); // Hide Phase 1 review if still visible
+            hideDocumentReview(); // Hide document review if still visible
             if (websocket) {
                 websocket.close();
                 websocket = null;
@@ -517,4 +535,237 @@ async function downloadAllDocuments() {
     }
 }
 window.downloadAllDocuments = downloadAllDocuments; // Make it global
+
+// Document Review Functions (per-document approval)
+let currentReviewingDocument = null;
+let currentReviewingAgentType = null;
+
+async function showDocumentReview(docName, taskId) {
+    if (!projectId) {
+        console.error('No project ID available for document review');
+        return;
+    }
+    
+    // Map task_id to agent_type
+    const taskToAgentType = {
+        'requirements': 'requirements_analyst',
+        'technical_doc': 'technical_documentation'
+    };
+    
+    const agentType = taskToAgentType[taskId] || taskId;
+    currentReviewingAgentType = agentType;
+    currentReviewingDocument = docName;
+    
+    const phase1Review = document.getElementById('phase1Review');
+    const phase1Documents = document.getElementById('phase1Documents');
+    
+    try {
+        // Fetch the specific document
+        const response = await fetch(`/api/document/${projectId}/${agentType}`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch document');
+        }
+        
+        const data = await response.json();
+        phase1Documents.innerHTML = '';
+        
+        // Display the document
+        const docCard = createDocumentCard(docName, data);
+        phase1Documents.appendChild(docCard);
+        
+        // Update title
+        const titleElement = phase1Review.querySelector('h3');
+        if (titleElement) {
+            titleElement.textContent = `Review: ${docName}`;
+        }
+        
+        // Update description
+        const descElement = document.getElementById('reviewDocumentDescription');
+        if (descElement) {
+            descElement.textContent = `${docName} has been generated and is ready for your review. Please review it below and approve to continue with the next document.`;
+        }
+        
+        // Show review UI
+        phase1Review.classList.remove('hidden');
+        phase1Review.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        
+        showStatus(`${docName} generated! Please review and approve to continue.`, 'info');
+    } catch (error) {
+        console.error('Error loading document:', error);
+        showStatus('Error loading document: ' + error.message, 'error');
+    }
+}
+
+function createDocumentCard(docName, docData) {
+    const card = document.createElement('div');
+    card.className = 'border border-gray-200 rounded-lg p-4 bg-gray-50';
+    
+    const header = document.createElement('div');
+    header.className = 'flex items-center justify-between mb-3';
+    
+    const title = document.createElement('h4');
+    title.className = 'text-base font-semibold text-gray-900';
+    title.textContent = docName;
+    header.appendChild(title);
+    
+    const info = document.createElement('div');
+    info.className = 'flex items-center gap-3';
+    
+    if (docData.version) {
+        const version = document.createElement('span');
+        version.className = 'text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium';
+        version.textContent = `Version ${docData.version}`;
+        info.appendChild(version);
+    }
+    
+    if (docData.quality_score) {
+        const score = document.createElement('span');
+        score.className = 'text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium';
+        score.textContent = `Quality: ${Math.round(docData.quality_score)}%`;
+        info.appendChild(score);
+    }
+    
+    header.appendChild(info);
+    card.appendChild(header);
+    
+    // Preview button
+    const previewBtn = document.createElement('button');
+    previewBtn.className = 'w-full mt-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-colors';
+    previewBtn.textContent = '📄 Preview Document';
+    previewBtn.onclick = () => {
+        previewDocument({
+            type: currentReviewingAgentType,
+            display_name: docName,
+            content: docData.content
+        });
+    };
+    card.appendChild(previewBtn);
+    
+    return card;
+}
+
+function hideDocumentReview() {
+    const phase1Review = document.getElementById('phase1Review');
+    phase1Review.classList.add('hidden');
+    currentReviewingDocument = null;
+    currentReviewingAgentType = null;
+}
+
+// Legacy function for backward compatibility
+async function showPhase1Review() {
+    // This is now handled by showDocumentReview for individual documents
+    // But we keep it for any legacy calls
+    if (currentReviewingDocument) {
+        await showDocumentReview(currentReviewingDocument, currentReviewingAgentType || 'requirements');
+    }
+}
+
+function hidePhase1Review() {
+    hideDocumentReview();
+}
+
+async function approvePhase1() {
+    if (!projectId || !currentReviewingAgentType) {
+        showStatus('No document available for approval', 'error');
+        return;
+    }
+    
+    const approveBtn = document.getElementById('approvePhase1Btn');
+    const rejectBtn = document.getElementById('rejectPhase1Btn');
+    const notesText = document.getElementById('approvalNotesText');
+    
+    // Disable buttons
+    approveBtn.disabled = true;
+    rejectBtn.disabled = true;
+    approveBtn.textContent = 'Approving...';
+    
+    try {
+        const notes = notesText ? notesText.value.trim() || null : null;
+        const response = await fetch(`/api/approve-document/${projectId}/${currentReviewingAgentType}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: notes })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+            throw new Error(errorData.detail || `HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        showStatus(`${currentReviewingDocument || 'Document'} approved! Workflow will continue...`, 'success');
+        hideDocumentReview();
+        
+        // Update progress
+        updateProgress(30);
+    } catch (error) {
+        console.error('Error approving document:', error);
+        showStatus('Error approving document: ' + error.message, 'error');
+        if (approveBtn) {
+            approveBtn.disabled = false;
+            approveBtn.textContent = '✅ Approve & Continue';
+        }
+        if (rejectBtn) {
+            rejectBtn.disabled = false;
+        }
+    }
+}
+window.approvePhase1 = approvePhase1;
+
+async function rejectPhase1() {
+    if (!projectId || !currentReviewingAgentType) {
+        showStatus('No document available for rejection', 'error');
+        return;
+    }
+    
+    // Confirm rejection
+    if (!confirm(`Are you sure you want to reject ${currentReviewingDocument || 'this document'}? This will stop the workflow.`)) {
+        return;
+    }
+    
+    const approveBtn = document.getElementById('approvePhase1Btn');
+    const rejectBtn = document.getElementById('rejectPhase1Btn');
+    const notesText = document.getElementById('approvalNotesText');
+    
+    // Disable buttons
+    if (approveBtn) approveBtn.disabled = true;
+    if (rejectBtn) rejectBtn.disabled = true;
+    if (rejectBtn) rejectBtn.textContent = 'Rejecting...';
+    
+    try {
+        const notes = notesText ? notesText.value.trim() || null : null;
+        const response = await fetch(`/api/reject-document/${projectId}/${currentReviewingAgentType}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: notes })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+            throw new Error(errorData.detail || `HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        showStatus(`${currentReviewingDocument || 'Document'} rejected. Workflow stopped.`, 'error');
+        hideDocumentReview();
+        
+        if (generateBtn) {
+            generateBtn.disabled = false;
+            generateBtn.textContent = 'Generate Documentation';
+            generateBtn.classList.remove('loading');
+        }
+        if (progressDiv) {
+            progressDiv.classList.add('hidden');
+        }
+    } catch (error) {
+        console.error('Error rejecting document:', error);
+        showStatus('Error rejecting document: ' + error.message, 'error');
+        if (approveBtn) approveBtn.disabled = false;
+        if (rejectBtn) {
+            rejectBtn.disabled = false;
+            rejectBtn.textContent = '❌ Reject & Stop';
+        }
+    }
+}
+window.rejectPhase1 = rejectPhase1;
 
