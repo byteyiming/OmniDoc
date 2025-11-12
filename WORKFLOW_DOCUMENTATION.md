@@ -293,6 +293,20 @@ document_file_paths = {}  # Store file paths
    - Quality Loop: Generate → Check → Improve iteratively (V1 → V2 → V3) until score >= 80.0
    - Approval: Required before proceeding
 
+6. **PM Documentation** (Team only, threshold: 80.0)
+   - Agent: `PMDocumentationAgent`
+   - Input: `project_charter_summary`
+   - Output: `project_plan.md`
+   - Quality Loop: Generate → Check → Improve iteratively (V1 → V2 → V3) until score >= 80.0
+   - Approval: Required before proceeding
+
+7. **Stakeholder Communication** (Team only, threshold: 80.0)
+   - Agent: `StakeholderCommunicationAgent`
+   - Input: `pm_doc_summary`
+   - Output: `stakeholder_summary.md`
+   - Quality Loop: Generate → Check → Improve iteratively (V1 → V2 → V3) until score >= 80.0
+   - Approval: Required before proceeding
+
 **Quality Loop Details** (`_run_agent_with_quality_loop`):
 
 ```python
@@ -385,11 +399,9 @@ def _run_agent_with_quality_loop(
 - Support Playbook (depends on User Documentation)
 - Legal Compliance (depends on Technical Documentation)
 
-### Phase 5: Management & Operations Documents (Parallel Execution)
+### Phase 5: (Empty - All Management Documents Moved to Phase 1)
 
-**Documents Generated** (Team only):
-- PM Documentation (depends on Project Charter)
-- Stakeholder Communication (depends on PM Documentation)
+**Note**: PM Documentation and Stakeholder Communication have been moved to Phase 1 as they are strategic foundation documents that should be approved early in the project lifecycle.
 
 **DAG Structure** (`workflow_dag.py`):
 
@@ -811,7 +823,7 @@ Attempt 4: Wait 8.0 seconds (if max_retries > 3)
 
 ### Document Generation
 1. **Phase 1**: Strategic & Business foundation documents (sequential execution with per-document approval)
-   - Requirements, Project Charter (team only), User Stories (team only), Business Model (team only), Marketing Plan (team only)
+   - Requirements, Project Charter (team only), User Stories (team only), Business Model (team only), Marketing Plan (team only), PM Documentation (team only), Stakeholder Communication (team only)
    - Each document: Generate → Quality Check → Iterative Improvement (V1 → V2 → V3) → Wait for Approval
 2. **Phase 2**: Technical documentation & implementation (parallel execution with DAG)
    - Technical Documentation, Database Schema, API Documentation, Setup Guide
@@ -819,8 +831,7 @@ Attempt 4: Wait 8.0 seconds (if max_retries > 3)
    - Developer Documentation, Test Documentation
 4. **Phase 4**: User & Support documents (parallel execution)
    - User Documentation, Support Playbook, Legal Compliance
-5. **Phase 5**: Management & Operations documents (parallel execution, team only)
-   - PM Documentation, Stakeholder Communication
+5. **Phase 5**: (Empty - all management documents moved to Phase 1)
 6. **Final Packaging**: Cross-referencing, quality review, format conversion
 7. **Code Analysis**: Optional codebase analysis (if codebase_path provided)
 
