@@ -237,7 +237,7 @@ class ContextManager:
                         generated_at_str = output.generated_at
                 
                 cursor.execute("""
-                    INSERT OR REPLACE INTO agent_outputs (
+                    INSERT INTO agent_outputs (
                         output_id, project_id, agent_type, document_type,
                         content, file_path, quality_score, status,
                         dependencies, generated_at, version, approved
