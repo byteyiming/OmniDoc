@@ -28,6 +28,8 @@ DOCUMENT_LEVEL_MAPPING = {
     # Level 2: Product (Product Manager)
     "pm_documentation": DocumentLevel.LEVEL_2_PRODUCT,
     "user_stories": DocumentLevel.LEVEL_2_PRODUCT,
+    "wbs_agent": DocumentLevel.LEVEL_2_PRODUCT,
+    "work_breakdown_structure": DocumentLevel.LEVEL_2_PRODUCT,
     
     # Level 3: Technical (Programmer)
     "technical_documentation": DocumentLevel.LEVEL_3_TECHNICAL,
@@ -55,6 +57,8 @@ DOCUMENT_DISPLAY_NAMES = {
     "stakeholder_communication": "Stakeholder Summary",
     "pm_documentation": "Project Management Plan",
     "user_stories": "User Stories & Epics",
+    "wbs_agent": "Work Breakdown Structure",
+    "work_breakdown_structure": "Work Breakdown Structure",
     "technical_documentation": "Technical Specification",
     "api_documentation": "API Documentation",
     "database_schema": "Database Schema",
