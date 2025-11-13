@@ -96,18 +96,29 @@ Format requirements:
 - Be realistic and professional
 - Include specific estimates (durations in weeks/months, team sizes, budget ranges)
 - DO NOT just list requirements - create project plans with schedules and resource allocations
+- COMPLETE ALL TABLES - ensure every table has all rows and columns filled in
+- COMPLETE ALL SECTIONS - every section must have full content, not just headers
 {READABILITY_GUIDELINES}
 
 
 CRITICAL: Create project management documents that can actually be used to manage the project. Include specific timelines, team structures, budget breakdowns, and risk mitigation plans based on the project scope.
+
+COMPLETENESS REQUIREMENTS:
+- You MUST complete ALL sections listed above with full, detailed content
+- You MUST complete ALL tables with all rows and columns filled in
+- You MUST NOT leave any section incomplete or with placeholder text
+- You MUST NOT leave any table incomplete or with missing rows/columns
+- Every section must have substantive content, not just headers
+- Every table must have all data filled in completely
 
 IMPORTANT OUTPUT FORMAT:
 - DO NOT wrap your response in markdown code blocks (no ```markdown)
 - DO NOT repeat the requirements document
 - Generate ONLY the project management content based on the Project Charter
 - Start directly with your document structure (e.g., "# Project Management Plan" or "## Project Timeline")
+- COMPLETE THE ENTIRE DOCUMENT - ensure every section and table is fully populated
 
-Now, analyze the following project information and generate the project management document:"""
+Now, analyze the following project information and generate the COMPLETE project management document with ALL sections and tables fully filled in:"""
 
 # Technical Documentation Agent Prompt
 TECHNICAL_DOCUMENTATION_PROMPT = """You are a Technical Writer specializing in creating comprehensive technical documentation.
@@ -211,7 +222,14 @@ IMPORTANT OUTPUT FORMAT:
 - Generate ONLY the technical specification content
 - Start directly with your document structure (e.g., "# Technical Specification" or "## System Architecture")
 
-Now, analyze the following project information and generate the SPECIFIC technical specification document:"""
+COMPLETENESS REQUIREMENTS:
+- You MUST complete ALL sections listed above with full, detailed content
+- You MUST complete ALL diagrams with full details
+- You MUST NOT leave any section incomplete or with placeholder text
+- Every section must have substantive content, not just headers
+- All diagrams must be complete with all components and relationships
+
+Now, analyze the following project information and generate the COMPLETE SPECIFIC technical specification document with ALL sections fully filled in:"""
 
 # API Documentation Agent Prompt
 API_DOCUMENTATION_PROMPT = """You are an API Documentation Specialist. Your task is to create comprehensive API documentation.
@@ -303,7 +321,14 @@ IMPORTANT OUTPUT FORMAT:
 - Generate ONLY the API documentation content
 - Start directly with your document structure (e.g., "# API Documentation" or "## API Overview")
 
-Now, analyze the following project information and generate the SPECIFIC API documentation with real endpoints:"""
+COMPLETENESS REQUIREMENTS:
+- You MUST complete ALL sections listed above with full, detailed content
+- You MUST document ALL API endpoints with complete request/response examples
+- You MUST NOT leave any section incomplete or with placeholder text
+- Every endpoint must have complete documentation with examples
+- All tables must have all rows and columns filled in
+
+Now, analyze the following project information and generate the COMPLETE SPECIFIC API documentation with ALL endpoints fully documented:"""
 
 # Developer Documentation Agent Prompt
 DEVELOPER_DOCUMENTATION_PROMPT = """You are a Developer Documentation Specialist. Your task is to create comprehensive developer-focused documentation.
@@ -670,6 +695,43 @@ def get_pm_prompt(requirements_summary: dict, project_charter_summary: Optional[
     if not project_charter_summary:
         raise ValueError("Level 2 (PM Documentation) REQUIRES Level 1 (Project Charter) output. Cannot proceed without it.")
     
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
+    
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    req_context = "\n".join(req_context_parts) if req_context_parts else ""
+    
     # Summarize project charter instead of truncating
     charter_summary = summarize_document(
         project_charter_summary,
@@ -678,21 +740,29 @@ def get_pm_prompt(requirements_summary: dict, project_charter_summary: Optional[
         focus_areas=["project objectives", "timeline", "budget", "stakeholder information", "business case"]
     ) if len(project_charter_summary) > 3000 else project_charter_summary
     
+    # Include full requirements document if available (for comprehensive context)
+    if requirements_document:
+        req_context += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}"
+        if len(requirements_document) > 5000:
+            req_context += f"\n[... document continues, {len(requirements_document)} total characters ...]"
+    
     context_text = f"""
 === LEVEL 2: Product Management Documentation ===
-You are generating Level 2 documentation, which MUST be based on Level 1 (Project Charter) output.
+You are generating Level 2 documentation, which MUST be based on Level 1 (Project Charter) output AND the original requirements.
 
 PRIMARY SOURCE - Level 1 Output (Project Charter):
 {charter_summary}
 
+REQUIREMENTS CONTEXT (for reference):
+{req_context}
+
 CRITICAL INSTRUCTIONS:
 1. Extract project objectives, timeline, budget, and stakeholder information from the Project Charter above
-2. Create SPECIFIC project management plans based on the business case
-3. DO NOT repeat requirements - use the Project Charter to create actionable PM plans
+2. Use the requirements context to understand project scope, core features, and constraints
+3. Create SPECIFIC project management plans based on the business case in the Charter AND the core features from requirements
 4. Align timelines, resources, and budgets with the Project Charter
-
-Reference Information (for context only - DO NOT repeat):
-Project Overview: {requirements_summary.get('project_overview', 'N/A')}
+5. Consider constraints and assumptions from requirements when planning
+6. Base ALL plans on BOTH the Project Charter business objectives AND the core features from requirements
 """
     
     prompt = apply_readability_guidelines(PM_DOCUMENTATION_PROMPT)
@@ -700,7 +770,196 @@ Project Overview: {requirements_summary.get('project_overview', 'N/A')}
 
 {context_text}
 
-REMEMBER: You are Level 2. Use Level 1 (Project Charter) as your PRIMARY source. Generate the complete project management document based on the Charter:"""
+COMPLETENESS REQUIREMENTS:
+- You MUST complete ALL sections listed in the prompt with full, detailed content
+- You MUST complete ALL tables with all rows and columns filled in
+- You MUST NOT leave any section incomplete or with placeholder text
+- You MUST NOT leave any table incomplete or with missing rows/columns
+- Every section must have substantive content, not just headers
+- Every table must have all data filled in completely
+
+REMEMBER: You are Level 2. Use Level 1 (Project Charter) as your PRIMARY source, but also consider the requirements context. Generate the COMPLETE project management document with ALL sections and tables fully filled in based on the Charter and requirements:"""
+
+
+# WBS Agent Prompt
+WBS_PROMPT = """You are a Work Breakdown Structure (WBS) Specialist. Your task is to create a comprehensive, hierarchical work breakdown structure for project planning and execution.
+
+Based on the project requirements, project charter, and project management plan, generate a detailed WBS document in Markdown format.
+
+The document must include these sections:
+1. ## WBS Overview
+   - Project scope summary
+   - WBS structure explanation
+   - Numbering system used
+   - Level definitions
+
+2. ## Level 1: Major Phases
+   - High-level project phases
+   - Phase descriptions
+   - Phase objectives
+   - Phase deliverables
+
+3. ## Level 2: Work Packages
+   - Detailed work packages for each phase
+   - Work package descriptions
+   - Deliverables per work package
+   - Acceptance criteria
+
+4. ## Level 3: Tasks and Activities
+   - Detailed tasks within each work package
+   - Task descriptions
+   - Task dependencies
+   - Task sequencing
+
+5. ## Resource Allocation
+   - Resources required per work package
+   - Team assignments
+   - Skill requirements
+   - Resource availability considerations
+
+6. ## Time Estimates
+   - Duration estimates for each work package
+   - Task-level time estimates
+   - Critical path identification
+   - Buffer time recommendations
+
+7. ## Dependencies and Sequencing
+   - Task dependencies (predecessors/successors)
+   - Dependency types (finish-to-start, start-to-start, etc.)
+   - Critical dependencies
+   - Parallel work opportunities
+
+8. ## Milestones and Checkpoints
+   - Major project milestones
+   - Phase completion checkpoints
+   - Review and approval points
+   - Go/No-Go decision points
+
+9. ## Risk Considerations
+   - High-risk work packages
+   - Risk mitigation strategies
+   - Contingency planning
+   - Risk monitoring points
+
+10. ## WBS Dictionary
+    - Detailed description of each work package
+    - Deliverables definition
+    - Acceptance criteria
+    - Assumptions and constraints
+
+Format requirements:
+- Use clear Markdown headings (## for main sections, ### for subsections)
+- Use hierarchical numbering (1.1, 1.1.1, etc.) to show WBS structure
+- Use tables for dependencies and resource allocation
+- Use bullet points for lists
+- Be specific and actionable
+- Include realistic time estimates
+- Show clear dependencies between tasks
+- Align with project timeline and budget from PM plan
+{READABILITY_GUIDELINES}
+
+CRITICAL: The WBS should be:
+- Hierarchical and well-organized
+- Detailed enough for project execution
+- Aligned with project phases and milestones
+- Realistic in terms of time and resource estimates
+- Clear about dependencies and sequencing
+
+IMPORTANT OUTPUT FORMAT:
+- DO NOT wrap your response in markdown code blocks (no ```markdown)
+- Generate ONLY the WBS document content
+- Start directly with your document structure (e.g., "# Work Breakdown Structure")
+- Use proper WBS numbering convention (1.0, 1.1, 1.1.1, etc.)
+
+Now, analyze the following project information and generate the work breakdown structure:"""
+
+
+def get_wbs_prompt(
+    requirements_summary: dict,
+    project_charter_summary: Optional[str] = None,
+    pm_summary: Optional[str] = None
+) -> str:
+    """Get full WBS prompt with requirements, project charter, and PM plan summaries"""
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
+    
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    context_text = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available
+    if requirements_document:
+        context_text += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}"
+        if len(requirements_document) > 5000:
+            context_text += f"\n[... document continues, {len(requirements_document)} total characters ...]"
+    
+    if project_charter_summary:
+        charter_processed = summarize_document(
+            project_charter_summary,
+            document_type="project charter",
+            target_agent="wbs_agent",
+            focus_areas=["project objectives", "timeline", "budget", "milestones", "phases"]
+        ) if len(project_charter_summary) > 3000 else project_charter_summary
+        
+        context_text += f"""
+
+=== Project Charter (Timeline and Milestones Reference) ===
+{charter_processed}
+"""
+    
+    if pm_summary:
+        pm_processed = summarize_document(
+            pm_summary,
+            document_type="project management plan",
+            target_agent="wbs_agent",
+            focus_areas=["project phases", "timeline", "resource allocation", "milestones", "risk assessment"]
+        ) if len(pm_summary) > 3000 else pm_summary
+        
+        context_text += f"""
+
+=== Project Management Plan (Resource and Timeline Reference) ===
+{pm_processed}
+"""
+    
+    wbs_prompt = apply_readability_guidelines(WBS_PROMPT)
+    return f"""{wbs_prompt}
+
+=== REQUIREMENTS CONTEXT ===
+{context_text}
+
+CRITICAL: Use BOTH the original project idea and requirements context AND the Project Charter and PM Plan to create a comprehensive work breakdown structure. Base work packages and tasks on the core features from requirements, and align phases, milestones, and timelines with the Project Charter and PM Plan.
+
+Generate the complete work breakdown structure:"""
 
 
 def get_technical_prompt(
@@ -710,15 +969,48 @@ def get_technical_prompt(
     code_analysis_summary: Optional[str] = None
 ) -> str:
     """Get full technical documentation prompt with requirements, user stories, PM summaries, and optional code analysis"""
-    req_text = f"""
-Project Overview: {requirements_summary.get('project_overview', 'N/A')}
-
-Core Features:
-{chr(10).join('- ' + str(f) for f in requirements_summary.get('core_features', []))}
-
-Technical Requirements:
-{chr(10).join(f'- {k}: {v}' for k, v in requirements_summary.get('technical_requirements', {}).items())}
-"""
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
+    
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    req_text = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available
+    if requirements_document:
+        req_text += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}"
+        if len(requirements_document) > 5000:
+            req_text += f"\n[... document continues, {len(requirements_document)} total characters ...]"
     
     context_text = req_text
     
@@ -901,14 +1193,58 @@ def get_api_prompt(
     requirements_summary: dict, 
     technical_summary: Optional[str] = None,
     database_schema_summary: Optional[str] = None,
+    user_stories_summary: Optional[str] = None,
     code_analysis_summary: Optional[str] = None
 ) -> str:
-    """Get full API documentation prompt - Level 3 must use Technical Spec and Database Schema, optionally with code analysis"""
+    """Get full API documentation prompt - Level 3 must use Technical Spec, Database Schema, and User Stories, optionally with code analysis"""
     
     # LEVEL 3: Must use Level 3 Technical Documentation as PRIMARY source (unless code-first mode)
     # In code-first mode, code analysis is the primary source
     if not code_analysis_summary and not technical_summary:
         raise ValueError("API Documentation (Level 3) REQUIRES Technical Documentation output or code analysis (code-first mode). Cannot proceed without it.")
+    
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
+    
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    req_context = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available (for reference)
+    if requirements_document:
+        req_context += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:3000] if len(requirements_document) > 3000 else requirements_document}"
+        if len(requirements_document) > 3000:
+            req_context += f"\n[... document continues, {len(requirements_document)} total characters ...]"
     
     context = ""
     
@@ -965,6 +1301,33 @@ PRIMARY SOURCE - Technical Documentation (Level 3):
 {tech_summary}
 """
     
+    # Add user stories information if available (CRITICAL for API design)
+    if user_stories_summary:
+        user_stories_processed = summarize_document(
+            user_stories_summary,
+            document_type="user stories",
+            target_agent="api_documentation",
+            focus_areas=["user stories", "epics", "acceptance criteria", "user workflows", "feature requirements"]
+        ) if len(user_stories_summary) > 3000 else user_stories_summary
+        
+        context += f"""
+
+=== USER STORIES (Level 2 - PRIMARY SOURCE for API Design) ===
+{user_stories_processed}
+
+CRITICAL: Use the user stories above to design SPECIFIC API endpoints. Each user story defines a feature that needs API support. Design endpoints that directly support these user stories and their acceptance criteria.
+"""
+    
+    # Add requirements context
+    if req_context:
+        context += f"""
+
+=== REQUIREMENTS CONTEXT (for reference) ===
+{req_context}
+
+NOTE: Use the requirements context to understand the project scope and core features, but prioritize the Technical Documentation and User Stories above for API design.
+"""
+    
     # Add database schema information if available
     if database_schema_summary:
         db_summary = summarize_document(
@@ -976,7 +1339,7 @@ PRIMARY SOURCE - Technical Documentation (Level 3):
         
         context += f"""
 
-DATABASE SCHEMA - Detailed SQL Schemas (Level 3):
+=== DATABASE SCHEMA (Level 3 - PRIMARY SOURCE for API Data Models) ===
 {db_summary}
 
 CRITICAL INSTRUCTIONS:
@@ -988,12 +1351,13 @@ CRITICAL INSTRUCTIONS:
 6. DO NOT repeat requirements or generic information - create specific API endpoint documentation
 
 Each API endpoint must:
-- Support the user stories defined in Level 2
+- Support the user stories defined in User Stories above (each endpoint should directly support one or more user stories)
 - Work with the EXACT database tables and columns from Database Schema (use actual table names and column names)
 - Perform CRUD operations that match the database schema structure
 - Follow the authentication mechanisms specified in Technical Documentation
 - Implement the error handling patterns from Technical Documentation
 - Return data structures that match the database schema (e.g., if a table has columns id, name, email, the API response should include these fields)
+- Map user story workflows to API endpoints (e.g., if a user story says "As a user, I want to create a project", create a POST /projects endpoint)
 """
     else:
         context += """
@@ -1006,7 +1370,7 @@ CRITICAL INSTRUCTIONS:
 5. DO NOT repeat requirements or generic information - create specific API endpoint documentation
 
 Each API endpoint must:
-- Support the user stories defined in Level 2
+- Support the user stories defined in User Stories above (if provided) or requirements context
 - Align with the database schema in Technical Documentation
 - Follow the authentication mechanisms specified in Technical Documentation
 - Implement the error handling patterns from Technical Documentation
@@ -1025,7 +1389,14 @@ REMEMBER: You are in CODE-FIRST mode. Document the ACTUAL API endpoints found in
 
 {context}
 
-REMEMBER: You are Level 3. Use Technical Documentation and Database Schema as your PRIMARY sources. Now generate SPECIFIC API documentation with actual endpoints that work with the database schema:"""
+REMEMBER: You are Level 3. Use Technical Documentation, Database Schema, and User Stories as your PRIMARY sources. 
+- Technical Documentation provides the architecture and design patterns
+- Database Schema provides the data models and table structures  
+- User Stories provide the functional requirements that each API endpoint must support
+Now generate SPECIFIC API documentation with actual endpoints that:
+1. Support the user stories from User Stories above
+2. Work with the database schema from Database Schema above
+3. Follow the architecture from Technical Documentation above"""
 
 
 def get_developer_prompt(requirements_summary: dict, technical_summary: Optional[str] = None, api_summary: Optional[str] = None) -> str:
@@ -1034,6 +1405,49 @@ def get_developer_prompt(requirements_summary: dict, technical_summary: Optional
     # Must have at least Technical Documentation (Level 3)
     if not technical_summary:
         raise ValueError("Developer Documentation REQUIRES Technical Documentation (Level 3) output. Cannot proceed without it.")
+    
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
+    
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    req_context = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available (for reference)
+    if requirements_document:
+        req_context += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:3000] if len(requirements_document) > 3000 else requirements_document}"
+        if len(requirements_document) > 3000:
+            req_context += f"\n[... document continues, {len(requirements_document)} total characters ...]"
     
     context = """=== Developer Documentation (Based on Level 3 Outputs) ===
 You are generating developer documentation based on Level 3 technical outputs.
@@ -1057,6 +1471,16 @@ Use the technical specifications above to provide:
 - Setup instructions based on the technology stack specified
 - Code structure matching the architecture described
 - Development workflows aligned with the technical design
+"""
+    
+    # Add requirements context
+    if req_context:
+        context += f"""
+
+=== REQUIREMENTS CONTEXT (for reference) ===
+{req_context}
+
+NOTE: Use the requirements context to understand the project scope and core features, but prioritize the Technical Documentation above for development setup and workflows.
 """
     
     if api_summary:
@@ -1093,23 +1517,68 @@ REMEMBER: Use Level 3 outputs as PRIMARY sources. Focus on HOW to develop based 
 
 def get_stakeholder_prompt(requirements_summary: dict, pm_summary: Optional[str] = None) -> str:
     """Get full stakeholder communication prompt with requirements and PM summary"""
-    req_text = f"""
-Project Overview: {requirements_summary.get('project_overview', 'N/A')}
-
-Core Features:
-{chr(10).join('- ' + f for f in requirements_summary.get('core_features', []))}
-
-Business Objectives:
-{chr(10).join('- ' + f for f in requirements_summary.get('business_objectives', []))}
-
-Technical Requirements (simplified):
-{chr(10).join(f'- {k}: {v}' for k, v in requirements_summary.get('technical_requirements', {}).items())}
-"""
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
     
-    pm_text = f"\n\nProject Management Details:\n{pm_summary}" if pm_summary else ""
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    req_text = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available
+    if requirements_document:
+        req_text += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}"
+        if len(requirements_document) > 5000:
+            req_text += f"\n[... document continues, {len(requirements_document)} total characters ...]"
+    
+    pm_text = f"\n\n=== Project Management Details ===\n{pm_summary}" if pm_summary else ""
     
     stakeholder_prompt = apply_readability_guidelines(STAKEHOLDER_COMMUNICATION_PROMPT)
-    return f"{stakeholder_prompt}\n\n{req_text}{pm_text}\n\nGenerate the complete stakeholder communication document:"
+    return f"""{stakeholder_prompt}
+
+=== REQUIREMENTS CONTEXT ===
+{req_text}{pm_text}
+
+CRITICAL: Use the original project idea and comprehensive requirements context to create stakeholder communication documents. Base messaging, value proposition, and project updates on the core features and business objectives from requirements.
+
+COMPLETENESS REQUIREMENTS:
+- You MUST complete ALL sections listed in the prompt with full, detailed content
+- You MUST complete ALL tables with all rows and columns filled in
+- You MUST NOT leave any section incomplete or with placeholder text
+- You MUST NOT leave any table incomplete or with missing rows/columns
+- Every section must have substantive content, not just headers
+- Every table must have all data filled in completely
+
+Generate the COMPLETE stakeholder communication document with ALL sections and tables fully filled in:"""
 
 
 def get_quality_reviewer_prompt(all_documentation: dict) -> str:
@@ -1229,50 +1698,219 @@ Return ONLY the JSON object with your quality assessment:"""
 
 def get_user_prompt(requirements_summary: dict) -> str:
     """Get full user documentation prompt with requirements summary"""
-    req_text = f"""
-Project Overview: {requirements_summary.get('project_overview', 'N/A')}
-
-Core Features:
-{chr(10).join('- ' + f for f in requirements_summary.get('core_features', []))}
-
-User Personas:
-{chr(10).join('- ' + str(p) for p in requirements_summary.get('user_personas', []))}
-"""
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
+    
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    req_text = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available
+    if requirements_document:
+        req_text += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}"
+        if len(requirements_document) > 5000:
+            req_text += f"\n[... document continues, {len(requirements_document)} total characters ...]"
     
     prompt = apply_readability_guidelines(USER_DOCUMENTATION_PROMPT)
-    return f"{prompt}\n\n{req_text}\n\nGenerate the complete user documentation:"
+    return f"""{prompt}
+
+=== REQUIREMENTS CONTEXT ===
+{req_text}
+
+CRITICAL: Use the original project idea and comprehensive requirements context to create user documentation. Base user guides, tutorials, and feature explanations on the core features and user personas from requirements.
+
+Generate the complete user documentation:"""
 
 
-def get_test_prompt(requirements_summary: dict, technical_summary: Optional[str] = None) -> str:
-    """Get test documentation prompt - Must use Level 3 outputs"""
+def get_test_prompt(
+    requirements_summary: dict, 
+    technical_summary: Optional[str] = None,
+    api_summary: Optional[str] = None,
+    database_schema_summary: Optional[str] = None,
+    user_stories_summary: Optional[str] = None
+) -> str:
+    """Get test documentation prompt - Must use Level 3 outputs (Technical, API, Database Schema) and Level 2 outputs (User Stories)"""
     
     # Must have Technical Documentation (Level 3)
     if not technical_summary:
         raise ValueError("Test Documentation REQUIRES Technical Documentation (Level 3) output. Cannot proceed without it.")
+    
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
+    
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    req_context = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available (for reference)
+    if requirements_document:
+        req_context += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:3000] if len(requirements_document) > 3000 else requirements_document}"
+        if len(requirements_document) > 3000:
+            req_context += f"\n[... document continues, {len(requirements_document)} total characters ...]"
     
     # Summarize technical documentation instead of truncating
     tech_summary_processed = summarize_document(
         technical_summary,
         document_type="technical documentation",
         target_agent="test_documentation",
-        focus_areas=["API endpoints to test", "database operations", "system components", "architecture for integration tests"]
+        focus_areas=["system architecture", "system components", "integration patterns", "deployment architecture"]
     ) if len(technical_summary) > 4000 else technical_summary
     
     context = f"""
 === Test Documentation (Based on Level 3 Outputs) ===
-You are generating test documentation based on Level 3 Technical Documentation.
+You are generating test documentation based on Level 3 Technical Documentation, API Documentation, Database Schema, and Level 2 User Stories.
 
 PRIMARY SOURCE - Technical Documentation (Level 3):
 {tech_summary_processed}
 
+REQUIREMENTS CONTEXT (for reference):
+{req_context}
+
 CRITICAL INSTRUCTIONS:
-Design SPECIFIC test cases based on Technical Documentation above:
-- Test cases for each API endpoint specified in Technical Documentation
-- Test cases for database operations based on the database schema in Technical Documentation
+Design SPECIFIC test cases based on ALL the sources above:
 - Test cases for system components described in Technical Documentation
 - Integration test scenarios for the architecture in Technical Documentation
 - Performance test scenarios based on Technical Documentation requirements
-- DO NOT create generic tests - base ALL tests on the specific technical design
+- Use the requirements context to understand the core features and business objectives to test
+"""
+    
+    # Add API documentation if available (CRITICAL for API endpoint testing)
+    if api_summary:
+        api_summary_processed = summarize_document(
+            api_summary,
+            document_type="API documentation",
+            target_agent="test_documentation",
+            focus_areas=["API endpoints", "request/response formats", "authentication", "error handling", "status codes"]
+        ) if len(api_summary) > 4000 else api_summary
+        
+        context += f"""
+
+=== API DOCUMENTATION (Level 3 - PRIMARY SOURCE for API Endpoint Testing) ===
+{api_summary_processed}
+
+CRITICAL: Use the API Documentation above to design SPECIFIC test cases for each API endpoint:
+- Test cases for each API endpoint (GET, POST, PUT, DELETE, etc.)
+- Test request/response formats for each endpoint
+- Test authentication and authorization for each endpoint
+- Test error handling and status codes for each endpoint
+- Test edge cases and boundary conditions for each endpoint
+- Test API endpoint integration scenarios
+"""
+    
+    # Add database schema if available (CRITICAL for database operation testing)
+    if database_schema_summary:
+        db_schema_processed = summarize_document(
+            database_schema_summary,
+            document_type="database schema",
+            target_agent="test_documentation",
+            focus_areas=["table structures", "column definitions", "constraints", "relationships", "indexes"]
+        ) if len(database_schema_summary) > 4000 else database_schema_summary
+        
+        context += f"""
+
+=== DATABASE SCHEMA (Level 3 - PRIMARY SOURCE for Database Operation Testing) ===
+{db_schema_processed}
+
+CRITICAL: Use the Database Schema above to design SPECIFIC test cases for database operations:
+- Test cases for CRUD operations on each table
+- Test cases for database constraints (primary keys, foreign keys, unique constraints, etc.)
+- Test cases for database relationships and joins
+- Test cases for database transactions and rollbacks
+- Test cases for database indexes and performance
+- Test cases for database data integrity
+"""
+    
+    # Add user stories if available (CRITICAL for user story testing)
+    if user_stories_summary:
+        user_stories_processed = summarize_document(
+            user_stories_summary,
+            document_type="user stories",
+            target_agent="test_documentation",
+            focus_areas=["user stories", "epics", "acceptance criteria", "user workflows", "feature requirements"]
+        ) if len(user_stories_summary) > 4000 else user_stories_summary
+        
+        context += f"""
+
+=== USER STORIES (Level 2 - PRIMARY SOURCE for User Story Testing) ===
+{user_stories_processed}
+
+CRITICAL: Use the User Stories above to design SPECIFIC test cases for user story acceptance criteria:
+- Test cases for each user story and its acceptance criteria
+- Test cases for user workflows and user journeys
+- Test cases for feature requirements defined in user stories
+- Test cases for user personas and use cases
+- Integration test scenarios based on user stories
+"""
+    
+    context += """
+
+REMEMBER: 
+- DO NOT create generic tests - base ALL tests on the specific sources above
+- Each test case should be traceable to a specific API endpoint, database operation, user story, or system component
+- Design test cases that verify the acceptance criteria from user stories
+- Design test cases that verify API endpoints work correctly
+- Design test cases that verify database operations work correctly
+- Design test cases that verify system components work correctly
 """
     
     test_prompt = apply_readability_guidelines(TEST_DOCUMENTATION_PROMPT)
@@ -1280,7 +1918,7 @@ Design SPECIFIC test cases based on Technical Documentation above:
 
 {context}
 
-REMEMBER: Use Level 3 Technical Documentation as PRIMARY source. Generate SPECIFIC test cases with test data, expected results, and procedures based on the technical design. Generate the complete test documentation:"""
+REMEMBER: Use ALL the sources above (Technical Documentation, API Documentation, Database Schema, User Stories) to generate SPECIFIC test cases with test data, expected results, and procedures. Each test case should be traceable to a specific source. Generate the complete test documentation:"""
 
 
 # Claude CLI Documentation Agent Prompt
@@ -1476,16 +2114,48 @@ def get_project_charter_prompt(requirements_summary: dict) -> str:
     project_overview = requirements_summary.get("project_overview", "")
     core_features = requirements_summary.get("core_features", [])
     business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")  # Full requirements document
     
-    context = f"""
-Project Idea: {user_idea}
-
-Project Overview: {project_overview}
-
-Core Features: {', '.join(core_features) if core_features else 'To be determined'}
-
-Business Objectives: {', '.join(business_objectives) if business_objectives else 'To be determined'}
-"""
+    # Build comprehensive context
+    context_parts = [f"Project Idea: {user_idea}"]
+    
+    if project_overview:
+        context_parts.append(f"\nProject Overview: {project_overview}")
+    
+    if core_features:
+        context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    
+    if business_objectives:
+        context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    
+    if user_personas:
+        context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                context_parts.append(f"- {key}: {value}")
+        else:
+            context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    
+    if constraints:
+        context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    
+    if assumptions:
+        context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    # Include full requirements document if available (for comprehensive context)
+    if requirements_document:
+        context_parts.append(f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}")
+        if len(requirements_document) > 5000:
+            context_parts.append(f"\n[... document continues, {len(requirements_document)} total characters ...]")
+    
+    context = "\n".join(context_parts)
     
     charter_prompt = apply_readability_guidelines(PROJECT_CHARTER_PROMPT)
     return charter_prompt + "\n\n" + context
@@ -1563,23 +2233,87 @@ Now, analyze the following project information and generate the User Stories doc
 
 def get_user_stories_prompt(requirements_summary: dict, project_charter_summary: Optional[str] = None) -> str:
     """Get User Stories prompt - Level 2 can use Level 1 output if available"""
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    requirements_document = requirements_summary.get("requirements_document", "")  # Full requirements document
+    
     if project_charter_summary:
-        # Team mode: Use Project Charter as primary source
+        # Team mode: Use Project Charter as primary source, but also include requirements context
+        # Build comprehensive context with requirements information
+        req_context_parts = []
+        if user_idea:
+            req_context_parts.append(f"Original Project Idea: {user_idea}")
+        if project_overview:
+            req_context_parts.append(f"\nProject Overview: {project_overview}")
+        if core_features:
+            req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+        if user_personas:
+            req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+        if business_objectives:
+            req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+        
+        req_context = "\n".join(req_context_parts) if req_context_parts else ""
+        
         context = f"""
 === LEVEL 2: User Stories & Epics Documentation ===
-You are generating Level 2 documentation, which MUST be based on Level 1 (Project Charter) output.
+You are generating Level 2 documentation, which MUST be based on Level 1 (Project Charter) output AND the original requirements.
 
 PRIMARY SOURCE - Level 1 Output (Project Charter):
 {summarize_document(project_charter_summary, document_type="project charter", target_agent="user_stories", focus_areas=["business objectives", "project scope", "success criteria", "user needs"]) if len(project_charter_summary) > 3000 else project_charter_summary}
 
+REQUIREMENTS CONTEXT (for reference):
+{req_context}
+
 CRITICAL INSTRUCTIONS:
 1. Extract business objectives, project scope, and success criteria from the Project Charter above
-2. Create SPECIFIC user stories that support the business objectives in the Charter
-3. Prioritize stories based on the Charter's business case and ROI analysis
-4. Organize stories into epics that align with Charter milestones and phases
+2. Use the requirements context to understand user needs and core features
+3. Create SPECIFIC user stories that support the business objectives in the Charter AND implement the core features from requirements
+4. Prioritize stories based on the Charter's business case and ROI analysis
+5. Organize stories into epics that align with Charter milestones and phases
+6. Base user stories on BOTH the Project Charter business objectives AND the core features from requirements
 """
+        user_stories_prompt_base = apply_readability_guidelines(USER_STORIES_PROMPT)
+        final_prompt = f"""{user_stories_prompt_base}
+
+{context}
+
+CRITICAL REMINDERS:
+- You are Level 2. Generate user stories based on BOTH the Project Charter AND the requirements
+- Create SPECIFIC user stories with "As a [user], I want [feature] so that [benefit]" format
+- Include detailed acceptance criteria for each story (Given/When/Then format)
+- Assign story points (1, 2, 3, 5, 8, 13) and priorities based on Charter business objectives and feature importance
+- Organize stories into epics that align with Charter milestones and phases
+- Base ALL stories on BOTH the Project Charter business objectives AND the core features from requirements
+
+Generate the complete User Stories and Epics document based on the Project Charter and requirements:"""
+        return final_prompt
     else:
         # Individual mode: Work with requirements only
+        # Build comprehensive context
+        context_parts = []
+        if user_idea:
+            context_parts.append(f"Original Project Idea: {user_idea}")
+        if project_overview:
+            context_parts.append(f"\nProject Overview: {project_overview}")
+        if core_features:
+            context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+        if user_personas:
+            context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+        if business_objectives:
+            context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+        if technical_requirements:
+            context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+        
+        # Include full requirements document if available
+        if requirements_document:
+            context_parts.append(f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}")
+            if len(requirements_document) > 5000:
+                context_parts.append(f"\n[... document continues, {len(requirements_document)} total characters ...]")
+        
         context = f"""
 === LEVEL 2: User Stories & Epics Documentation ===
 You are generating Level 2 documentation based on requirements. (Project Charter not available - individual profile mode)
@@ -1590,10 +2324,10 @@ CRITICAL INSTRUCTIONS:
 3. Prioritize stories based on feature importance and dependencies
 4. Organize stories into logical epics that group related functionality
 5. DO NOT repeat requirements - create actionable user stories from the features
+6. Base ALL stories on the core features and user needs from requirements
 
-Reference Information:
-Project Overview: {requirements_summary.get('project_overview', 'N/A')}
-Core Features: {', '.join(requirements_summary.get('core_features', [])) if requirements_summary.get('core_features') else 'N/A'}
+REQUIREMENTS CONTEXT:
+{chr(10).join(context_parts) if context_parts else 'No requirements context available'}
 """
         user_stories_prompt_base = apply_readability_guidelines(USER_STORIES_PROMPT)
         final_prompt = f"""{user_stories_prompt_base}
@@ -1737,27 +2471,75 @@ def get_database_schema_prompt(requirements_summary: dict, technical_summary: Op
     if not technical_summary:
         raise ValueError("Database Schema (Level 3) REQUIRES Technical Documentation output. Cannot proceed without it.")
     
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
+    
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    req_context = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available (for reference)
+    if requirements_document:
+        req_context += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:3000] if len(requirements_document) > 3000 else requirements_document}"
+        if len(requirements_document) > 3000:
+            req_context += f"\n[... document continues, {len(requirements_document)} total characters ...]"
+    
     context = f"""
 === LEVEL 3: Database Schema Documentation ===
-You are generating Level 3 database schema, which MUST be based on Technical Documentation output.
+You are generating Level 3 database schema, which MUST be based on Technical Documentation output AND the original requirements.
 
 PRIMARY SOURCE - Technical Documentation (Level 3):
 {summarize_document(technical_summary, document_type="technical documentation", target_agent="database_schema", focus_areas=["database design patterns", "data models", "entity relationships", "database schema"]) if len(technical_summary) > 4000 else technical_summary}
 
+REQUIREMENTS CONTEXT (for reference):
+{req_context}
+
 CRITICAL INSTRUCTIONS:
 1. Extract database design OVERVIEW from Technical Documentation above (table names, purposes, relationships, field names, data types)
-2. Technical Documentation provides the DATABASE DESIGN OVERVIEW and ARCHITECTURE
-3. Your task is to EXPAND the database design overview into DETAILED SQL IMPLEMENTATION
-4. Convert the database design overview into complete SQL CREATE TABLE statements with:
+2. Use the requirements context to understand the core features and business objectives that the database should support
+3. Technical Documentation provides the DATABASE DESIGN OVERVIEW and ARCHITECTURE
+4. Your task is to EXPAND the database design overview into DETAILED SQL IMPLEMENTATION
+5. Convert the database design overview into complete SQL CREATE TABLE statements with:
    - Exact column definitions with data types (VARCHAR, INT, TIMESTAMP, etc.)
    - All constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE, NOT NULL, CHECK)
    - Index definitions (PRIMARY indexes, INDEX, UNIQUE indexes)
    - Foreign key constraints with ON DELETE/ON UPDATE actions
    - Default values where appropriate
-5. The Technical Documentation tells you WHAT tables to create and WHY
-6. You provide the HOW - the detailed SQL implementation
-7. Create tables that match the design described in Technical Documentation
-8. DO NOT repeat requirements - implement the database design from Technical Documentation
+6. The Technical Documentation tells you WHAT tables to create and WHY
+7. You provide the HOW - the detailed SQL implementation
+8. Use the requirements context to ensure the database schema supports all core features
+9. Create tables that match the design described in Technical Documentation AND support the core features from requirements
+10. DO NOT repeat requirements - implement the database design from Technical Documentation
 """
     
     db_schema_prompt = apply_readability_guidelines(DATABASE_SCHEMA_PROMPT)
@@ -1766,9 +2548,10 @@ CRITICAL INSTRUCTIONS:
 {context}
 
 CRITICAL REMINDERS:
-- You are Level 3. Use Technical Documentation as your PRIMARY source
+- You are Level 3. Use Technical Documentation as your PRIMARY source, but also consider the requirements context
 - Technical Documentation provides the DATABASE DESIGN OVERVIEW (what tables exist, what they store, how they relate)
 - Your role is to IMPLEMENT the design with DETAILED SQL (CREATE TABLE statements, indexes, constraints)
+- Use the requirements context to ensure the database schema supports all core features
 - DO NOT repeat requirements - IMPLEMENT the database design from Technical Documentation
 - Create ACTUAL table definitions with complete SQL CREATE TABLE statements
 - Include ALL columns with exact data types (VARCHAR(255), INT, TIMESTAMP, TEXT, etc.)
@@ -1778,10 +2561,7 @@ CRITICAL REMINDERS:
 - Add appropriate constraints, indexes, and relationships based on the design overview
 - Include database initialization scripts and migration scripts if applicable
 
-Reference Information (for context only):
-Project Overview: {requirements_summary.get('project_overview', 'N/A')}
-
-Generate the complete Database Schema document based on Technical Documentation:"""
+Generate the complete Database Schema document based on Technical Documentation and requirements:"""
     
     return final_prompt
 
@@ -1886,18 +2666,65 @@ def get_setup_guide_prompt(
     if not technical_summary:
         raise ValueError("Setup Guide REQUIRES Technical Documentation (Level 3) output. Cannot proceed without it.")
     
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
+    
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    req_context = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available (for reference)
+    if requirements_document:
+        req_context += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:3000] if len(requirements_document) > 3000 else requirements_document}"
+        if len(requirements_document) > 3000:
+            req_context += f"\n[... document continues, {len(requirements_document)} total characters ...]"
+    
     context = f"""
 === Setup Guide (Based on Level 3 Outputs) ===
-You are generating setup instructions based on Level 3 technical outputs.
+You are generating setup instructions based on Level 3 technical outputs AND the original requirements.
 
 PRIMARY SOURCE - Technical Documentation (Level 3):
 {summarize_document(technical_summary, document_type="technical documentation", target_agent="setup_guide", focus_areas=["technology stack", "development setup requirements", "dependencies", "system requirements"]) if len(technical_summary) > 3000 else technical_summary}
 
+REQUIREMENTS CONTEXT (for reference):
+{req_context}
+
 CRITICAL INSTRUCTIONS:
-Extract SPECIFIC setup information from Technical Documentation above:
+Extract SPECIFIC setup information from Technical Documentation above AND use the requirements context to understand the project scope:
 - Technology stack and EXACT versions (e.g., Python 3.11.5, Node.js 18.17.0, PostgreSQL 15.3)
 - Configuration requirements from technical spec
 - Actual installation commands based on the specified tech stack
+- Use the requirements context to understand what features need to be set up
 """
     
     # Add database schema information if available
@@ -1940,21 +2767,29 @@ API Documentation (Level 3):
 Use API documentation to provide examples of testing API endpoints during setup verification.
 """
     
+    # Add requirements context reminder if available
+    if req_context:
+        context += f"""
+
+NOTE: Use the requirements context to understand the project scope and core features, but prioritize the Technical Documentation above for setup instructions.
+"""
+    
     setup_guide_prompt = apply_readability_guidelines(SETUP_GUIDE_PROMPT)
     final_prompt = f"""{setup_guide_prompt}
 
 {context}
 
 CRITICAL REMINDERS:
-- You are using Level 3 outputs as PRIMARY sources
+- You are using Level 3 outputs as PRIMARY sources, but also consider the requirements context
+- Use the requirements context to understand the project scope and core features
 - DO NOT repeat requirements - write SPECIFIC setup instructions from Technical Documentation and Database Schema
 - Include actual commands (extract from tech stack in Technical Documentation)
 - Provide real configuration file examples based on Technical Documentation
 - Include step-by-step procedures with copy-paste commands
 - Include SPECIFIC database setup steps using the SQL schemas from Database Schema
-- Base everything EXCLUSIVELY on the Level 3 technical specifications
+- Base everything on the Level 3 technical specifications AND the core features from requirements
 
-Generate the complete Setup Guide based on Level 3 outputs (Technical Documentation and Database Schema):"""
+Generate the complete Setup Guide based on Level 3 outputs (Technical Documentation and Database Schema) and requirements context:"""
     
     return final_prompt
 
@@ -2191,13 +3026,48 @@ def get_marketing_plan_prompt(
     business_model_summary: Optional[str] = None
 ) -> str:
     """Get marketing plan prompt with requirements, project charter, and business model"""
-    req_text = f"""
-Project Overview: {requirements_summary.get('project_overview', 'N/A')}
-Core Features: {', '.join(requirements_summary.get('core_features', []))}
-Target Users: {', '.join([p.get('name', 'N/A') for p in requirements_summary.get('user_personas', [])])}
-"""
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
     
-    context_text = req_text
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    context_text = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available
+    if requirements_document:
+        context_text += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}"
+        if len(requirements_document) > 5000:
+            context_text += f"\n[... document continues, {len(requirements_document)} total characters ...]"
     
     if project_charter_summary:
         charter_processed = summarize_document(
@@ -2209,7 +3079,7 @@ Target Users: {', '.join([p.get('name', 'N/A') for p in requirements_summary.get
         
         context_text += f"""
 
-Project Charter (Business Context):
+=== Project Charter (Business Context) ===
 {charter_processed}
 """
     
@@ -2223,14 +3093,17 @@ Project Charter (Business Context):
         
         context_text += f"""
 
-Business Model:
+=== Business Model ===
 {business_processed}
 """
     
     marketing_prompt = apply_readability_guidelines(MARKETING_PLAN_PROMPT)
     return f"""{marketing_prompt}
 
+=== REQUIREMENTS CONTEXT ===
 {context_text}
+
+CRITICAL: Use BOTH the original project idea and requirements context AND the Project Charter and Business Model to create a comprehensive marketing plan. Base target personas, value proposition, and marketing channels on the core features and user personas from requirements, and align with the business objectives in the Charter and pricing strategy in the Business Model.
 
 Generate the complete marketing plan:"""
 
@@ -2240,13 +3113,48 @@ def get_business_model_prompt(
     project_charter_summary: Optional[str] = None
 ) -> str:
     """Get business model prompt with requirements and project charter"""
-    req_text = f"""
-Project Overview: {requirements_summary.get('project_overview', 'N/A')}
-Core Features: {', '.join(requirements_summary.get('core_features', []))}
-Business Objectives: {', '.join(requirements_summary.get('business_objectives', []))}
-"""
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
     
-    context_text = req_text
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    context_text = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available
+    if requirements_document:
+        context_text += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}"
+        if len(requirements_document) > 5000:
+            context_text += f"\n[... document continues, {len(requirements_document)} total characters ...]"
     
     if project_charter_summary:
         charter_processed = summarize_document(
@@ -2258,14 +3166,17 @@ Business Objectives: {', '.join(requirements_summary.get('business_objectives', 
         
         context_text += f"""
 
-Project Charter (Business Context):
+=== Project Charter (Business Context) ===
 {charter_processed}
 """
     
     business_model_prompt = apply_readability_guidelines(BUSINESS_MODEL_PROMPT)
     return f"""{business_model_prompt}
 
+=== REQUIREMENTS CONTEXT ===
 {context_text}
+
+CRITICAL: Use BOTH the original project idea and requirements context AND the Project Charter to create a comprehensive business model. Base revenue models, pricing strategy, and KPIs on the core features and business objectives from requirements, and align with the business case in the Charter.
 
 Generate the complete business model:"""
 
@@ -2275,12 +3186,48 @@ def get_support_playbook_prompt(
     user_documentation_summary: Optional[str] = None
 ) -> str:
     """Get support playbook prompt with requirements and user documentation"""
-    req_text = f"""
-Project Overview: {requirements_summary.get('project_overview', 'N/A')}
-Core Features: {', '.join(requirements_summary.get('core_features', []))}
-"""
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
     
-    context_text = req_text
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    context_text = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available
+    if requirements_document:
+        context_text += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}"
+        if len(requirements_document) > 5000:
+            context_text += f"\n[... document continues, {len(requirements_document)} total characters ...]"
     
     if user_documentation_summary:
         user_doc_processed = summarize_document(
@@ -2292,14 +3239,17 @@ Core Features: {', '.join(requirements_summary.get('core_features', []))}
         
         context_text += f"""
 
-User Documentation (Reference for Support):
+=== User Documentation (Reference for Support) ===
 {user_doc_processed}
 """
     
     support_playbook_prompt = apply_readability_guidelines(SUPPORT_PLAYBOOK_PROMPT)
     return f"""{support_playbook_prompt}
 
+=== REQUIREMENTS CONTEXT ===
 {context_text}
+
+CRITICAL: Use the original project idea and comprehensive requirements context AND the User Documentation to create a comprehensive support playbook. Base support procedures, FAQs, and troubleshooting guides on the core features and user personas from requirements, and align with the user workflows in the User Documentation.
 
 Generate the complete support playbook:"""
 
@@ -2309,12 +3259,48 @@ def get_legal_compliance_prompt(
     technical_summary: Optional[str] = None
 ) -> str:
     """Get legal compliance prompt with requirements and technical documentation"""
-    req_text = f"""
-Project Overview: {requirements_summary.get('project_overview', 'N/A')}
-Core Features: {', '.join(requirements_summary.get('core_features', []))}
-"""
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
     
-    context_text = req_text
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    context_text = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available
+    if requirements_document:
+        context_text += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}"
+        if len(requirements_document) > 5000:
+            context_text += f"\n[... document continues, {len(requirements_document)} total characters ...]"
     
     if technical_summary:
         tech_processed = summarize_document(
@@ -2326,13 +3312,16 @@ Core Features: {', '.join(requirements_summary.get('core_features', []))}
         
         context_text += f"""
 
-Technical Documentation (Data Handling Reference):
+=== Technical Documentation (Data Handling Reference) ===
 {tech_processed}
 """
     
     legal_compliance_prompt = apply_readability_guidelines(LEGAL_COMPLIANCE_PROMPT)
     return f"""{legal_compliance_prompt}
 
+=== REQUIREMENTS CONTEXT ===
 {context_text}
+
+CRITICAL: Use the original project idea and comprehensive requirements context AND the Technical Documentation to create comprehensive legal compliance documentation. Base privacy policies, terms of service, and compliance procedures on the core features and data handling practices from requirements and technical documentation.
 
 Generate the complete legal compliance documentation:"""
