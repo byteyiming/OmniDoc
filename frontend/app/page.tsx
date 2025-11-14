@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import DocumentSelector from '@/components/DocumentSelector';
 import { createProject } from '@/lib/api';
-import { t } from '@/lib/i18n';
+import { useI18n } from '@/lib/i18n';
 
 export default function Home() {
   const router = useRouter();
+  const { t } = useI18n();
   const [userIdea, setUserIdea] = useState('');
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);

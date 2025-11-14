@@ -1,6 +1,10 @@
 /**
- * Simple i18n implementation for OmniDoc
+ * Simple i18n implementation for OmniDoc with React support
  */
+
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
 
 export type Language = 'en' | 'zh' | 'ja' | 'ko';
 
@@ -141,14 +145,23 @@ const translations: Record<Language, Record<string, string>> = {
   },
 };
 
-let currentLanguage: Language = 'en';
+// Global language state (for non-React usage)
+let globalLanguage: Language = 'en';
+
+// Language change listeners
+const listeners = new Set<() => void>();
+
+function notifyListeners() {
+  listeners.forEach(listener => listener());
+}
 
 export function setLanguage(lang: Language): void {
   if (languages.includes(lang)) {
-    currentLanguage = lang;
+    globalLanguage = lang;
     if (typeof window !== 'undefined') {
       localStorage.setItem('omniDoc_language', lang);
     }
+    notifyListeners();
   }
 }
 
@@ -159,7 +172,7 @@ export function getLanguage(): Language {
       return saved as Language;
     }
   }
-  return currentLanguage;
+  return globalLanguage;
 }
 
 export function t(key: string): string {
@@ -167,11 +180,50 @@ export function t(key: string): string {
   return translations[lang]?.[key] || translations.en[key] || key;
 }
 
+// React hook for i18n
+export function useI18n() {
+  const [language, setLanguageState] = useState<Language>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('omniDoc_language');
+      if (saved && languages.includes(saved as Language)) {
+        return saved as Language;
+      }
+    }
+    return 'en';
+  });
+
+  useEffect(() => {
+    const handleLanguageChange = () => {
+      const newLang = getLanguage();
+      setLanguageState(newLang);
+    };
+
+    listeners.add(handleLanguageChange);
+    return () => {
+      listeners.delete(handleLanguageChange);
+    };
+  }, []);
+
+  const changeLanguage = useCallback((lang: Language) => {
+    setLanguage(lang);
+    setLanguageState(lang);
+  }, []);
+
+  const translate = useCallback((key: string): string => {
+    return translations[language]?.[key] || translations.en[key] || key;
+  }, [language]);
+
+  return {
+    language,
+    setLanguage: changeLanguage,
+    t: translate,
+  };
+}
+
 // Initialize language from localStorage
 if (typeof window !== 'undefined') {
   const saved = localStorage.getItem('omniDoc_language');
   if (saved && languages.includes(saved as Language)) {
-    currentLanguage = saved as Language;
+    globalLanguage = saved as Language;
   }
 }
-

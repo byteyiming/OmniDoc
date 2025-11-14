@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { DocumentTemplate, getDocumentTemplates } from '../lib/api';
-import { t, getLanguage, setLanguage, languages, languageNames, type Language } from '../lib/i18n';
+import { useI18n, languages, languageNames, type Language } from '../lib/i18n';
 import { rankDocuments, filterDocumentsByView, organizeByLevel, DocumentLevel, LEVEL_NAMES, LEVEL_ICONS, type ViewMode } from '../lib/documentRanking';
 
 interface DocumentSelectorProps {
@@ -18,7 +18,7 @@ export default function DocumentSelector({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('all');
-  const [currentLang, setCurrentLang] = useState<Language>(getLanguage());
+  const { language, setLanguage, t } = useI18n();
 
   useEffect(() => {
     async function loadTemplates() {
@@ -51,7 +51,6 @@ export default function DocumentSelector({
 
   const handleLanguageChange = (lang: Language) => {
     setLanguage(lang);
-    setCurrentLang(lang);
   };
 
   const renderDocumentList = (docs: DocumentTemplate[], level: DocumentLevel) => {
@@ -135,7 +134,7 @@ export default function DocumentSelector({
               key={lang}
               onClick={() => handleLanguageChange(lang)}
               className={`rounded px-3 py-1 text-sm transition-colors ${
-                currentLang === lang
+                language === lang
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
