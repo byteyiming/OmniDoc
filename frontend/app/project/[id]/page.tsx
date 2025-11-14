@@ -6,6 +6,7 @@ import ProgressTimeline from '@/components/ProgressTimeline';
 import GeneratingAnimation from '@/components/GeneratingAnimation';
 import { useProjectStatus } from '@/lib/useProjectStatus';
 import { getWebSocketUrl } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 interface ProgressEvent {
   type: string;
@@ -24,6 +25,7 @@ export default function ProjectStatusPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
+  const { t } = useI18n();
 
   const [events, setEvents] = useState<ProgressEvent[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
@@ -169,8 +171,8 @@ export default function ProjectStatusPage() {
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-4xl px-4 py-12">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Project Status</h1>
-          <p className="mt-2 text-sm text-gray-600">Project ID: {projectId}</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('status.title')}</h1>
+          <p className="mt-2 text-sm text-gray-600">{t('status.projectId')}: {projectId}</p>
         </div>
 
         {/* Connection Status */}
@@ -184,8 +186,8 @@ export default function ProjectStatusPage() {
               />
               <span className="text-sm text-gray-700">
                 {wsConnected
-                  ? 'Real-time updates connected'
-                  : 'Polling for updates (WebSocket unavailable)'}
+                  ? t('status.connected')
+                  : t('status.polling')}
               </span>
             </div>
             {status && (
@@ -208,7 +210,7 @@ export default function ProjectStatusPage() {
         <div className="rounded-lg bg-white p-6 shadow-sm">
           {isLoading && events.length === 0 ? (
             <div className="flex items-center justify-center p-8">
-              <div className="text-gray-500">Loading project status...</div>
+              <div className="text-gray-500">{t('status.loading')}</div>
             </div>
           ) : (
             <>
@@ -242,14 +244,14 @@ export default function ProjectStatusPage() {
               onClick={handleViewResults}
               className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700"
             >
-              View Results →
+              {t('button.viewResults')} →
             </button>
           </div>
         )}
 
         {status?.error && (
           <div className="mt-6 rounded-lg bg-red-50 p-4 text-red-800">
-            <div className="font-medium">Error:</div>
+            <div className="font-medium">{t('status.error')}:</div>
             <div className="mt-1 text-sm">{status.error}</div>
           </div>
         )}

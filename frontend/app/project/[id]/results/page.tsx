@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DocumentViewer from '@/components/DocumentViewer';
 import { getProjectDocuments, GeneratedDocument } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 export default function ProjectResultsPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
+  const { t } = useI18n();
 
   const [documents, setDocuments] = useState<GeneratedDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,8 +44,8 @@ export default function ProjectResultsPage() {
       if (navigator.share) {
         // Use native share API if available
         await navigator.share({
-          title: 'OmniDoc Generated Documents',
-          text: 'Check out these generated project documents',
+          title: t('results.shareTitle'),
+          text: t('results.shareText'),
           url: url,
         });
       } else {
@@ -69,7 +71,7 @@ export default function ProjectResultsPage() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="text-gray-500">Loading documents...</div>
+        <div className="text-gray-500">{t('results.loading')}</div>
       </div>
     );
   }
@@ -78,13 +80,13 @@ export default function ProjectResultsPage() {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
         <div className="rounded-lg bg-red-50 p-6 text-red-800">
-          <div className="font-medium">Error loading documents</div>
+          <div className="font-medium">{t('results.errorLoading')}</div>
           <div className="mt-2 text-sm">{error}</div>
           <button
             onClick={() => router.push(`/project/${projectId}`)}
             className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700"
           >
-            Back to Status
+            {t('results.backToStatus')}
           </button>
         </div>
       </div>
@@ -98,10 +100,10 @@ export default function ProjectResultsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              Generated Documents
+              {t('results.title')}
             </h1>
             <p className="mt-1 text-sm text-gray-600">
-              Project ID: {projectId}
+              {t('status.projectId')}: {projectId}
             </p>
           </div>
           <div className="flex space-x-3">
@@ -110,19 +112,19 @@ export default function ProjectResultsPage() {
               className="flex items-center space-x-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
             >
               <span>{shareCopied ? '✓' : '🔗'}</span>
-              <span>{shareCopied ? 'Copied!' : 'Share'}</span>
+              <span>{shareCopied ? t('results.copied') : t('results.share')}</span>
             </button>
             <button
               onClick={() => router.push(`/project/${projectId}`)}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
-              ← Back to Status
+              {t('results.backToStatus')}
             </button>
             <button
               onClick={() => router.push('/')}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
-              New Project
+              {t('results.newProject')}
             </button>
           </div>
         </div>
@@ -135,15 +137,15 @@ export default function ProjectResultsPage() {
         ) : (
           <div className="flex h-full items-center justify-center">
             <div className="text-center text-gray-500">
-              <div className="text-lg font-medium">No documents generated yet</div>
+              <div className="text-lg font-medium">{t('results.noDocuments')}</div>
               <div className="mt-2 text-sm">
-                Documents may still be generating. Check back in a moment.
+                {t('results.stillGenerating')}
               </div>
               <button
                 onClick={() => router.push(`/project/${projectId}`)}
                 className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
               >
-                View Status
+                {t('results.viewStatus')}
               </button>
             </div>
           </div>

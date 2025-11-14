@@ -1,6 +1,7 @@
 'use client';
 
 import { getDocumentIcon } from '@/lib/documentRanking';
+import { useI18n, getDocumentName } from '@/lib/i18n';
 
 interface ProgressEvent {
   type: string;
@@ -23,6 +24,7 @@ export default function ProgressTimeline({
   events,
   total,
 }: ProgressTimelineProps) {
+  const { t } = useI18n();
   const getEventIcon = (event: ProgressEvent) => {
     // For document_completed events, use the document's level icon
     if (event.type === 'document_completed' && event.document_id) {
@@ -66,17 +68,17 @@ export default function ProgressTimeline({
   const getEventMessage = (event: ProgressEvent) => {
     switch (event.type) {
       case 'start':
-        return 'Generation started';
+        return t('status.generationStarted');
       case 'plan':
-        return `Planning ${event.total || '?'} documents`;
+        return `${t('status.planning')} ${event.total || '?'} ${t('status.documents')}`;
       case 'document_started':
-        return `Generating: ${event.name || event.document_id}`;
+        return `${t('status.generating')}: ${getDocumentName(event.document_id || '') || event.name || event.document_id}`;
       case 'document_completed':
-        return `Completed: ${event.name || event.document_id}`;
+        return `${t('status.completed')}: ${getDocumentName(event.document_id || '') || event.name || event.document_id}`;
       case 'complete':
-        return `All done! Generated ${(event as any).files_count || 0} documents`;
+        return `${t('status.allDone')} ${(event as any).files_count || 0} ${t('status.documents')}`;
       case 'error':
-        return `Error: ${event.message || 'Unknown error'}`;
+        return `${t('status.error')}: ${event.message || 'Unknown error'}`;
       default:
         return event.message || event.type;
     }
@@ -85,7 +87,7 @@ export default function ProgressTimeline({
   if (events.length === 0) {
     return (
       <div className="flex items-center justify-center p-8 text-gray-500">
-        Waiting for progress updates...
+        {t('status.waiting')}
       </div>
     );
   }
@@ -93,11 +95,11 @@ export default function ProgressTimeline({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Progress</h3>
+        <h3 className="text-lg font-semibold">{t('status.progress')}</h3>
         {total && (
           <span className="text-sm text-gray-500">
             {events.filter((e) => e.type === 'document_completed').length}/
-            {total} completed
+            {total} {t('status.completed')}
           </span>
         )}
       </div>
