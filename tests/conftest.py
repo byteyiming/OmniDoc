@@ -69,6 +69,19 @@ def quality_checker():
 @pytest.fixture
 def mock_gemini_provider(monkeypatch):
     """Mock Gemini provider that returns predictable responses"""
+    async def mock_async_generate(prompt, **kwargs):
+        return """# Test Document
+
+## Section 1
+Test content with enough words to pass quality checks.
+
+## Section 2
+More test content here.
+
+## Section 3
+Additional content for completeness.
+"""
+    
     def mock_generate(prompt, **kwargs):
         return """# Test Document
 
@@ -85,6 +98,15 @@ Additional content for completeness.
     class MockProvider:
         def generate(self, prompt, **kwargs):
             return mock_generate(prompt, **kwargs)
+        
+        async def async_generate(self, prompt, **kwargs):
+            return await mock_async_generate(prompt, **kwargs)
+        
+        def generate_text(self, prompt, **kwargs):
+            return mock_generate(prompt, **kwargs)
+        
+        async def async_generate_text(self, prompt, **kwargs):
+            return await mock_async_generate(prompt, **kwargs)
         
         def get_default_model(self):
             return "gemini-2.0-flash"

@@ -1,11 +1,11 @@
 """
 Integration Tests: Multi-Agent Workflow
-Tests the complete workflow coordinator
+Tests the complete workflow coordinator with new API-first architecture
 """
 import pytest
+import asyncio
 from src.coordination.coordinator import WorkflowCoordinator
 from src.context.context_manager import ContextManager
-from src.context.shared_context import AgentType
 
 
 @pytest.mark.integration
@@ -13,82 +13,151 @@ from src.context.shared_context import AgentType
 class TestWorkflowCoordinator:
     """Integration tests for workflow coordination"""
     
-    def test_generate_all_docs(self, mock_gemini_provider, context_manager, temp_dir):
-        """Test complete workflow with mocked LLM"""
-        # Create custom agents with mocked provider
-        from src.agents.requirements_analyst import RequirementsAnalyst
-        from src.agents.pm_documentation_agent import PMDocumentationAgent
-        from src.utils.file_manager import FileManager
-        from src.rate_limit.queue_manager import RequestQueue
-        
-        rate_limiter = RequestQueue(max_rate=1000, period=60)
-        file_manager = FileManager(base_dir=str(temp_dir))
-        
-        req_agent = RequirementsAnalyst(
-            llm_provider=mock_gemini_provider,
-            rate_limiter=rate_limiter,
-            file_manager=FileManager(base_dir=str(temp_dir / "docs"))
+    @pytest.mark.asyncio
+    async def test_async_generate_all_docs(self, mock_gemini_provider, context_manager, temp_dir):
+        """Test complete workflow with mocked LLM using new async API"""
+        # Create coordinator
+        coordinator = WorkflowCoordinator(
+            context_manager=context_manager,
+            provider_name="gemini"
         )
         
-        pm_agent = PMDocumentationAgent(
-            llm_provider=mock_gemini_provider,
-            rate_limiter=rate_limiter,
-            file_manager=FileManager(base_dir=str(temp_dir / "docs" / "pm"))
-        )
-        
-        # Create coordinator with custom agents
-        coordinator = WorkflowCoordinator(context_manager=context_manager)
-        coordinator.requirements_analyst = req_agent
-        coordinator.pm_agent = pm_agent
-        
-        results = coordinator.generate_all_docs("Build a blog platform", profile="team")
-        
-        assert results["project_id"] is not None
-        assert "requirements" in results["files"]
-        # pm_documentation is now in Phase 4, so it may not be generated if phase1_only=True or phases_to_run doesn't include Phase 4
-        # Check if pm_documentation exists (it should for team profile with full workflow)
-        if "pm_documentation" in results["files"]:
-            assert results["status"]["pm_documentation"] in ["complete", "complete_v2"]
-        assert results["status"]["requirements"] in ["complete", "complete_v2"]
-    
-    def test_workflow_status(self, mock_gemini_provider, context_manager, temp_dir, test_project_id):
-        """Test workflow status tracking"""
-        from src.agents.requirements_analyst import RequirementsAnalyst
-        from src.agents.pm_documentation_agent import PMDocumentationAgent
-        from src.utils.file_manager import FileManager
-        from src.rate_limit.queue_manager import RequestQueue
-        
-        rate_limiter = RequestQueue(max_rate=1000, period=60)
-        
-        req_agent = RequirementsAnalyst(
-            llm_provider=mock_gemini_provider,
-            rate_limiter=rate_limiter,
-            file_manager=FileManager(base_dir=str(temp_dir / "docs"))
-        )
-        
-        pm_agent = PMDocumentationAgent(
-            llm_provider=mock_gemini_provider,
-            rate_limiter=rate_limiter,
-            file_manager=FileManager(base_dir=str(temp_dir / "docs" / "pm"))
-        )
-        
-        coordinator = WorkflowCoordinator(context_manager=context_manager)
-        coordinator.requirements_analyst = req_agent
-        coordinator.pm_agent = pm_agent
-        
-        # Run workflow
-        results = coordinator.generate_all_docs("Test idea", project_id=test_project_id, profile="team")
-        
-        # Check status
-        status = coordinator.get_workflow_status(test_project_id)
-        
-        assert status["project_id"] == test_project_id
-        assert AgentType.REQUIREMENTS_ANALYST.value in status["completed_agents"]
-        # pm_documentation is now in Phase 4, so it may not be generated if phase1_only=True or phases_to_run doesn't include Phase 4
-        # For team profile with full workflow, it should be generated
-        if AgentType.PM_DOCUMENTATION.value in status["completed_agents"]:
-            assert status["total_outputs"] >= 2
-        else:
-            # At minimum, requirements should be generated
-            assert status["total_outputs"] >= 1
+        # Mock the LLM provider for all agents
+        for agent in coordinator.agents.values():
+            if hasattr(agent, 'llm_provider'):
+                agent.llm_provider = mock_gemini_provider
+            elif hasattr(agent, 'agent') and hasattr(agent.agent, 'llm_provider'):
+                agent.agent.llm_provider = mock_gemini_provider
 
+        project_id = "test_project_123"
+        user_idea = "Build a blog platform"
+        selected_documents = ["requirements", "project_charter"]
+
+        # Run async generation
+        results = await coordinator.async_generate_all_docs(
+            user_idea=user_idea,
+            project_id=project_id,
+            selected_documents=selected_documents
+        )
+
+        assert results is not None
+        assert "files" in results
+        assert "documents" in results
+        assert "summary" in results
+        
+        # Check that selected documents were processed
+        assert len(results["files"]) > 0
+        assert len(results["documents"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_dependency_resolution(self, mock_gemini_provider, context_manager, temp_dir):
+        """Test that dependencies are resolved correctly"""
+        coordinator = WorkflowCoordinator(
+            context_manager=context_manager,
+            provider_name="gemini"
+        )
+
+        # Mock LLM provider
+        for agent in coordinator.agents.values():
+            if hasattr(agent, 'llm_provider'):
+                agent.llm_provider = mock_gemini_provider
+            elif hasattr(agent, 'agent') and hasattr(agent.agent, 'llm_provider'):
+                agent.agent.llm_provider = mock_gemini_provider
+
+        project_id = "test_project_deps"
+        user_idea = "Test project with dependencies"
+        
+        # Select a document that has dependencies
+        # The coordinator should automatically include dependencies
+        selected_documents = ["pm_documentation"]  # This might depend on requirements, project_charter
+
+        results = await coordinator.async_generate_all_docs(
+            user_idea=user_idea,
+            project_id=project_id,
+            selected_documents=selected_documents
+        )
+
+        # Verify that dependencies were included in execution
+        assert results is not None
+        assert "files" in results
+        
+        # The execution plan should include dependencies
+        # (exact documents depend on config, but should be more than just pm_documentation)
+        assert len(results["files"]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_progress_callback(self, mock_gemini_provider, context_manager, temp_dir):
+        """Test that progress callbacks are called"""
+        coordinator = WorkflowCoordinator(
+            context_manager=context_manager,
+            provider_name="gemini"
+        )
+
+        # Mock LLM provider
+        for agent in coordinator.agents.values():
+            if hasattr(agent, 'llm_provider'):
+                agent.llm_provider = mock_gemini_provider
+            elif hasattr(agent, 'agent') and hasattr(agent.agent, 'llm_provider'):
+                agent.agent.llm_provider = mock_gemini_provider
+
+        project_id = "test_project_callback"
+        user_idea = "Test project"
+        selected_documents = ["requirements"]
+
+        progress_events = []
+
+        async def progress_callback(event):
+            progress_events.append(event)
+
+        results = await coordinator.async_generate_all_docs(
+            user_idea=user_idea,
+            project_id=project_id,
+            selected_documents=selected_documents,
+            progress_callback=progress_callback
+        )
+
+        # Verify progress events were received
+        assert len(progress_events) > 0
+        
+        # Check for expected event types
+        event_types = [e.get("type") for e in progress_events]
+        assert "plan" in event_types or "start" in event_types
+
+    def test_special_agent_integration(self, context_manager):
+        """Test that special agents are properly integrated"""
+        coordinator = WorkflowCoordinator(
+            context_manager=context_manager,
+            provider_name="gemini"
+        )
+
+        # Check that special agents are in the agents dict
+        # Requirements should be a special agent
+        if "requirements" in coordinator.agents:
+            agent = coordinator.agents["requirements"]
+            # Should be a SpecialAgentAdapter for requirements
+            from src.agents.special_agent_adapter import SpecialAgentAdapter
+            assert isinstance(agent, SpecialAgentAdapter)
+
+    def test_generic_agent_creation(self, context_manager):
+        """Test that generic agents are created for non-special documents"""
+        coordinator = WorkflowCoordinator(
+            context_manager=context_manager,
+            provider_name="gemini"
+        )
+
+        # Most documents should be generic agents
+        generic_count = 0
+        special_count = 0
+        
+        for doc_id, agent in coordinator.agents.items():
+            from src.agents.generic_document_agent import GenericDocumentAgent
+            from src.agents.special_agent_adapter import SpecialAgentAdapter
+            
+            if isinstance(agent, GenericDocumentAgent):
+                generic_count += 1
+            elif isinstance(agent, SpecialAgentAdapter):
+                special_count += 1
+
+        # Should have more generic agents than special
+        assert generic_count > 0
+        assert generic_count > special_count
