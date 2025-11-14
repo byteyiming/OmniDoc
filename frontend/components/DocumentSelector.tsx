@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { DocumentTemplate, getDocumentTemplates } from '../lib/api';
-import { useI18n, languages, languageNames, type Language } from '../lib/i18n';
+import { useI18n } from '../lib/i18n';
 import { rankDocuments, filterDocumentsByView, organizeByLevel, DocumentLevel, LEVEL_NAMES, LEVEL_ICONS, type ViewMode } from '../lib/documentRanking';
 
 interface DocumentSelectorProps {
@@ -18,7 +18,8 @@ export default function DocumentSelector({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('all');
-  const { language, setLanguage, t } = useI18n();
+  const [expandedLevels, setExpandedLevels] = useState<Set<DocumentLevel>>(new Set());
+  const { t } = useI18n();
 
   useEffect(() => {
     async function loadTemplates() {
@@ -49,8 +50,14 @@ export default function DocumentSelector({
     }
   };
 
-  const handleLanguageChange = (lang: Language) => {
-    setLanguage(lang);
+  const toggleLevel = (level: DocumentLevel) => {
+    const newExpanded = new Set(expandedLevels);
+    if (newExpanded.has(level)) {
+      newExpanded.delete(level);
+    } else {
+      newExpanded.add(level);
+    }
+    setExpandedLevels(newExpanded);
   };
 
   const renderDocumentList = (docs: DocumentTemplate[], level: DocumentLevel) => {
@@ -125,26 +132,6 @@ export default function DocumentSelector({
 
   return (
     <div className="space-y-4">
-      {/* Language Selector */}
-      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3">
-        <span className="text-sm font-medium text-gray-700">Language:</span>
-        <div className="flex gap-2">
-          {languages.map((lang) => (
-            <button
-              key={lang}
-              onClick={() => handleLanguageChange(lang)}
-              className={`rounded px-3 py-1 text-sm transition-colors ${
-                language === lang
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {languageNames[lang]}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* View Mode Selector */}
       <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3">
         <span className="text-sm font-medium text-gray-700">{t('documents.title')}:</span>
@@ -195,108 +182,156 @@ export default function DocumentSelector({
         {/* Level 1: Strategic */}
         {organizedDocs.strategic.length > 0 && (
           <div className="rounded-lg border-2 border-purple-200 bg-purple-50">
-            <div className="border-b border-purple-200 bg-purple-100 p-4">
+            <button
+              onClick={() => toggleLevel(DocumentLevel.STRATEGIC)}
+              className="w-full border-b border-purple-200 bg-purple-100 p-4 text-left transition-colors hover:bg-purple-200"
+            >
               <h4 className="flex items-center gap-2 font-semibold text-purple-900">
                 <span className="text-xl">{LEVEL_ICONS[DocumentLevel.STRATEGIC]}</span>
                 <span>{LEVEL_NAMES[DocumentLevel.STRATEGIC]}</span>
                 <span className="ml-auto text-sm font-normal text-purple-700">
                   ({organizedDocs.strategic.length} documents)
                 </span>
+                <span className="text-purple-600">
+                  {expandedLevels.has(DocumentLevel.STRATEGIC) ? '▼' : '▶'}
+                </span>
               </h4>
-            </div>
-            <div className="p-4">
-              {renderDocumentList(organizedDocs.strategic, DocumentLevel.STRATEGIC)}
-            </div>
+            </button>
+            {expandedLevels.has(DocumentLevel.STRATEGIC) && (
+              <div className="p-4">
+                {renderDocumentList(organizedDocs.strategic, DocumentLevel.STRATEGIC)}
+              </div>
+            )}
           </div>
         )}
 
         {/* Level 2: Product Manager */}
         {organizedDocs.product.length > 0 && (
           <div className="rounded-lg border-2 border-blue-200 bg-blue-50">
-            <div className="border-b border-blue-200 bg-blue-100 p-4">
+            <button
+              onClick={() => toggleLevel(DocumentLevel.PRODUCT)}
+              className="w-full border-b border-blue-200 bg-blue-100 p-4 text-left transition-colors hover:bg-blue-200"
+            >
               <h4 className="flex items-center gap-2 font-semibold text-blue-900">
                 <span className="text-xl">{LEVEL_ICONS[DocumentLevel.PRODUCT]}</span>
                 <span>{LEVEL_NAMES[DocumentLevel.PRODUCT]}</span>
                 <span className="ml-auto text-sm font-normal text-blue-700">
                   ({organizedDocs.product.length} documents)
                 </span>
+                <span className="text-blue-600">
+                  {expandedLevels.has(DocumentLevel.PRODUCT) ? '▼' : '▶'}
+                </span>
               </h4>
-            </div>
-            <div className="p-4">
-              {renderDocumentList(organizedDocs.product, DocumentLevel.PRODUCT)}
-            </div>
+            </button>
+            {expandedLevels.has(DocumentLevel.PRODUCT) && (
+              <div className="p-4">
+                {renderDocumentList(organizedDocs.product, DocumentLevel.PRODUCT)}
+              </div>
+            )}
           </div>
         )}
 
         {/* Level 3: Developer/Technical */}
         {organizedDocs.developer.length > 0 && (
           <div className="rounded-lg border-2 border-green-200 bg-green-50">
-            <div className="border-b border-green-200 bg-green-100 p-4">
+            <button
+              onClick={() => toggleLevel(DocumentLevel.DEVELOPER)}
+              className="w-full border-b border-green-200 bg-green-100 p-4 text-left transition-colors hover:bg-green-200"
+            >
               <h4 className="flex items-center gap-2 font-semibold text-green-900">
                 <span className="text-xl">{LEVEL_ICONS[DocumentLevel.DEVELOPER]}</span>
                 <span>{LEVEL_NAMES[DocumentLevel.DEVELOPER]}</span>
                 <span className="ml-auto text-sm font-normal text-green-700">
                   ({organizedDocs.developer.length} documents)
                 </span>
+                <span className="text-green-600">
+                  {expandedLevels.has(DocumentLevel.DEVELOPER) ? '▼' : '▶'}
+                </span>
               </h4>
-            </div>
-            <div className="p-4">
-              {renderDocumentList(organizedDocs.developer, DocumentLevel.DEVELOPER)}
-            </div>
+            </button>
+            {expandedLevels.has(DocumentLevel.DEVELOPER) && (
+              <div className="p-4">
+                {renderDocumentList(organizedDocs.developer, DocumentLevel.DEVELOPER)}
+              </div>
+            )}
           </div>
         )}
 
         {/* Level 4: User/End-user */}
         {organizedDocs.user.length > 0 && (
           <div className="rounded-lg border-2 border-yellow-200 bg-yellow-50">
-            <div className="border-b border-yellow-200 bg-yellow-100 p-4">
+            <button
+              onClick={() => toggleLevel(DocumentLevel.USER)}
+              className="w-full border-b border-yellow-200 bg-yellow-100 p-4 text-left transition-colors hover:bg-yellow-200"
+            >
               <h4 className="flex items-center gap-2 font-semibold text-yellow-900">
                 <span className="text-xl">{LEVEL_ICONS[DocumentLevel.USER]}</span>
                 <span>{LEVEL_NAMES[DocumentLevel.USER]}</span>
                 <span className="ml-auto text-sm font-normal text-yellow-700">
                   ({organizedDocs.user.length} documents)
                 </span>
+                <span className="text-yellow-600">
+                  {expandedLevels.has(DocumentLevel.USER) ? '▼' : '▶'}
+                </span>
               </h4>
-            </div>
-            <div className="p-4">
-              {renderDocumentList(organizedDocs.user, DocumentLevel.USER)}
-            </div>
+            </button>
+            {expandedLevels.has(DocumentLevel.USER) && (
+              <div className="p-4">
+                {renderDocumentList(organizedDocs.user, DocumentLevel.USER)}
+              </div>
+            )}
           </div>
         )}
 
         {/* Level 5: Operations/Maintenance */}
         {organizedDocs.operations.length > 0 && (
           <div className="rounded-lg border-2 border-orange-200 bg-orange-50">
-            <div className="border-b border-orange-200 bg-orange-100 p-4">
+            <button
+              onClick={() => toggleLevel(DocumentLevel.OPERATIONS)}
+              className="w-full border-b border-orange-200 bg-orange-100 p-4 text-left transition-colors hover:bg-orange-200"
+            >
               <h4 className="flex items-center gap-2 font-semibold text-orange-900">
                 <span className="text-xl">{LEVEL_ICONS[DocumentLevel.OPERATIONS]}</span>
                 <span>{LEVEL_NAMES[DocumentLevel.OPERATIONS]}</span>
                 <span className="ml-auto text-sm font-normal text-orange-700">
                   ({organizedDocs.operations.length} documents)
                 </span>
+                <span className="text-orange-600">
+                  {expandedLevels.has(DocumentLevel.OPERATIONS) ? '▼' : '▶'}
+                </span>
               </h4>
-            </div>
-            <div className="p-4">
-              {renderDocumentList(organizedDocs.operations, DocumentLevel.OPERATIONS)}
-            </div>
+            </button>
+            {expandedLevels.has(DocumentLevel.OPERATIONS) && (
+              <div className="p-4">
+                {renderDocumentList(organizedDocs.operations, DocumentLevel.OPERATIONS)}
+              </div>
+            )}
           </div>
         )}
 
         {/* Cross-Level (Everyone) */}
         {organizedDocs.crossLevel.length > 0 && (
           <div className="rounded-lg border-2 border-gray-200 bg-gray-50">
-            <div className="border-b border-gray-200 bg-gray-100 p-4">
+            <button
+              onClick={() => toggleLevel(DocumentLevel.CROSS_LEVEL)}
+              className="w-full border-b border-gray-200 bg-gray-100 p-4 text-left transition-colors hover:bg-gray-200"
+            >
               <h4 className="flex items-center gap-2 font-semibold text-gray-900">
                 <span className="text-xl">{LEVEL_ICONS[DocumentLevel.CROSS_LEVEL]}</span>
                 <span>{LEVEL_NAMES[DocumentLevel.CROSS_LEVEL]}</span>
                 <span className="ml-auto text-sm font-normal text-gray-700">
                   ({organizedDocs.crossLevel.length} documents)
                 </span>
+                <span className="text-gray-600">
+                  {expandedLevels.has(DocumentLevel.CROSS_LEVEL) ? '▼' : '▶'}
+                </span>
               </h4>
-            </div>
-            <div className="p-4">
-              {renderDocumentList(organizedDocs.crossLevel, DocumentLevel.CROSS_LEVEL)}
-            </div>
+            </button>
+            {expandedLevels.has(DocumentLevel.CROSS_LEVEL) && (
+              <div className="p-4">
+                {renderDocumentList(organizedDocs.crossLevel, DocumentLevel.CROSS_LEVEL)}
+              </div>
+            )}
           </div>
         )}
       </div>
