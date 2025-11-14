@@ -1,0 +1,11 @@
+{
+  "setup-worktree": [
+    "npm install",
+    "pip install -e .[dev,openai,anthropic,full]",
+    "uv sync --all-extras",
+    "uv run python -m src.web.app",
+    "uv run pytest tests/unit",         
+    "uv run black src tests",
+    "uv run ruff check src tests"
+  ]
+}

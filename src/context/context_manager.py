@@ -2,12 +2,15 @@
 Context Manager
 Manages shared context database for agent collaboration
 """
-import sqlite3
+import os
 import json
 import threading
 from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 from src.context.shared_context import (
     SharedContext,
@@ -20,41 +23,49 @@ from src.context.shared_context import (
 
 
 class ContextManager:
-    """Manages shared context in SQLite database"""
+    """Manages shared context in PostgreSQL database"""
     
-    def __init__(self, db_path: str = "context.db"):
+    def __init__(self, db_url: Optional[str] = None):
         """
         Initialize context manager
         
         Args:
-            db_path: Path to SQLite database file
+            db_url: PostgreSQL connection URL (e.g., postgresql://user:password@localhost/dbname)
+                   If None, reads from DATABASE_URL environment variable
         """
-        self.db_path = Path(db_path)
-        self.connection: Optional[sqlite3.Connection] = None
+        if db_url is None:
+            db_url = os.getenv("DATABASE_URL", "postgresql://localhost/omnidoc")
+        
+        self.db_url = db_url
+        self.connection: Optional[psycopg2.extensions.connection] = None
         self._lock = threading.Lock()  # Thread lock for database operations
         self._initialize_database()
     
+    def _get_connection(self):
+        """Get a database connection"""
+        if self.connection is None or self.connection.closed:
+            self.connection = psycopg2.connect(self.db_url)
+        return self.connection
+    
     def _initialize_database(self):
         """Create database tables if they don't exist"""
-        self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
-        self.connection.row_factory = sqlite3.Row  # Enable column access by name
-        
+        self.connection = self._get_connection()
         cursor = self.connection.cursor()
         
         # Projects table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS projects (
-                project_id TEXT PRIMARY KEY,
+                project_id VARCHAR(255) PRIMARY KEY,
                 user_idea TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                created_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL
             )
         """)
         
         # Requirements table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS requirements (
-                project_id TEXT PRIMARY KEY,
+                project_id VARCHAR(255) PRIMARY KEY,
                 user_idea TEXT NOT NULL,
                 project_overview TEXT,
                 core_features TEXT,  -- JSON array
@@ -63,73 +74,78 @@ class ContextManager:
                 business_objectives TEXT,  -- JSON array
                 constraints TEXT,  -- JSON array
                 assumptions TEXT,  -- JSON array
-                generated_at TEXT NOT NULL,
-                FOREIGN KEY (project_id) REFERENCES projects(project_id)
+                generated_at TIMESTAMP NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
             )
         """)
         
         # Agent outputs table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS agent_outputs (
-                output_id TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL,
-                agent_type TEXT NOT NULL,
-                document_type TEXT NOT NULL,
+                output_id VARCHAR(255) PRIMARY KEY,
+                project_id VARCHAR(255) NOT NULL,
+                agent_type VARCHAR(100) NOT NULL,
+                document_type VARCHAR(255) NOT NULL,
                 content TEXT NOT NULL,
                 file_path TEXT NOT NULL,
                 quality_score REAL,
-                status TEXT NOT NULL,
+                status VARCHAR(50) NOT NULL,
                 dependencies TEXT,  -- JSON array
-                generated_at TEXT,
+                generated_at TIMESTAMP,
                 version INTEGER DEFAULT 1,  -- Document version (1, 2, 3, etc.)
                 approved INTEGER DEFAULT 0,  -- 0 = pending, 1 = approved, 2 = rejected
-                approved_at TEXT,  -- Timestamp when approved
+                approved_at TIMESTAMP,  -- Timestamp when approved
                 approval_notes TEXT,  -- User notes during approval
-                FOREIGN KEY (project_id) REFERENCES projects(project_id)
+                FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
             )
         """)
         
         # Cross-references table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cross_references (
-                ref_id TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL,
-                from_document TEXT NOT NULL,
-                to_document TEXT NOT NULL,
-                reference_type TEXT NOT NULL,
+                ref_id VARCHAR(255) PRIMARY KEY,
+                project_id VARCHAR(255) NOT NULL,
+                from_document VARCHAR(255) NOT NULL,
+                to_document VARCHAR(255) NOT NULL,
+                reference_type VARCHAR(100) NOT NULL,
                 description TEXT,
-                FOREIGN KEY (project_id) REFERENCES projects(project_id)
+                FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
             )
         """)
         
         # Project status table for workflow state management
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS project_status (
-                project_id TEXT PRIMARY KEY,
-                status TEXT NOT NULL,
+                project_id VARCHAR(255) PRIMARY KEY,
+                status VARCHAR(50) NOT NULL,
                 user_idea TEXT NOT NULL,
-                profile TEXT,
-                provider_name TEXT,
-                started_at TEXT NOT NULL,
-                completed_at TEXT,
-                failed_at TEXT,
+                profile VARCHAR(50),
+                provider_name VARCHAR(100),
+                started_at TIMESTAMP NOT NULL,
+                completed_at TIMESTAMP,
+                failed_at TIMESTAMP,
                 error TEXT,
                 completed_agents TEXT,  -- JSON array
                 results TEXT,  -- JSON object (serialized results)
                 phase1_approved INTEGER DEFAULT 0,  -- 0 = pending, 1 = approved, 2 = rejected
-                phase1_approved_at TEXT,  -- Timestamp when Phase 1 was approved
+                phase1_approved_at TIMESTAMP,  -- Timestamp when Phase 1 was approved
                 phase1_approval_notes TEXT,  -- User notes/comments during approval
                 selected_documents TEXT,
-                FOREIGN KEY (project_id) REFERENCES projects(project_id)
+                FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
             )
         """)
         
-        cursor.execute("PRAGMA table_info(project_status)")
-        columns = {row[1] for row in cursor.fetchall()}
-        if "selected_documents" not in columns:
+        # Check if selected_documents column exists (PostgreSQL way)
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name='project_status' AND column_name='selected_documents'
+        """)
+        if cursor.fetchone() is None:
             cursor.execute("ALTER TABLE project_status ADD COLUMN selected_documents TEXT")
 
         self.connection.commit()
+        cursor.close()
     
     def create_project(self, project_id: str, user_idea: str) -> str:
         """
@@ -142,29 +158,45 @@ class ContextManager:
         Returns:
             project_id
         """
-        cursor = self.connection.cursor()
-        now = datetime.now().isoformat()
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        now = datetime.now()
         
         cursor.execute("""
-            INSERT OR REPLACE INTO projects (project_id, user_idea, created_at, updated_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO projects (project_id, user_idea, created_at, updated_at)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (project_id) DO UPDATE SET
+                user_idea = EXCLUDED.user_idea,
+                updated_at = EXCLUDED.updated_at
         """, (project_id, user_idea, now, now))
         
-        self.connection.commit()
+        conn.commit()
+        cursor.close()
         return project_id
     
     def save_requirements(self, project_id: str, requirements: RequirementsDocument):
         """Save requirements document (thread-safe)"""
         with self._lock:
             try:
-                cursor = self.connection.cursor()
+                conn = self._get_connection()
+                cursor = conn.cursor()
                 
                 cursor.execute("""
-                    INSERT OR REPLACE INTO requirements (
+                    INSERT INTO requirements (
                         project_id, user_idea, project_overview, core_features,
                         technical_requirements, user_personas, business_objectives,
                         constraints, assumptions, generated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (project_id) DO UPDATE SET
+                        user_idea = EXCLUDED.user_idea,
+                        project_overview = EXCLUDED.project_overview,
+                        core_features = EXCLUDED.core_features,
+                        technical_requirements = EXCLUDED.technical_requirements,
+                        user_personas = EXCLUDED.user_personas,
+                        business_objectives = EXCLUDED.business_objectives,
+                        constraints = EXCLUDED.constraints,
+                        assumptions = EXCLUDED.assumptions,
+                        generated_at = EXCLUDED.generated_at
                 """, (
                     project_id,
                     requirements.user_idea,
@@ -175,10 +207,11 @@ class ContextManager:
                     json.dumps(requirements.business_objectives),
                     json.dumps(requirements.constraints),
                     json.dumps(requirements.assumptions),
-                    requirements.generated_at.isoformat()
+                    requirements.generated_at
                 ))
                 
-                self.connection.commit()
+                conn.commit()
+                cursor.close()
             except Exception as e:
                 import logging
                 logger = logging.getLogger(__name__)
@@ -187,12 +220,18 @@ class ContextManager:
     
     def get_requirements(self, project_id: str) -> Optional[RequirementsDocument]:
         """Get requirements for a project"""
-        cursor = self.connection.cursor()
-        cursor.execute("SELECT * FROM requirements WHERE project_id = ?", (project_id,))
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT * FROM requirements WHERE project_id = %s", (project_id,))
         row = cursor.fetchone()
+        cursor.close()
         
         if not row:
             return None
+        
+        generated_at = row["generated_at"]
+        if isinstance(generated_at, str):
+            generated_at = datetime.fromisoformat(generated_at)
         
         return RequirementsDocument(
             user_idea=row["user_idea"],
@@ -203,7 +242,7 @@ class ContextManager:
             business_objectives=json.loads(row["business_objectives"] or "[]"),
             constraints=json.loads(row["constraints"] or "[]"),
             assumptions=json.loads(row["assumptions"] or "[]"),
-            generated_at=datetime.fromisoformat(row["generated_at"])
+            generated_at=generated_at
         )
     
     def save_agent_output(self, project_id: str, output: AgentOutput, version: Optional[int] = None):
@@ -217,7 +256,8 @@ class ContextManager:
         """
         with self._lock:
             try:
-                cursor = self.connection.cursor()
+                conn = self._get_connection()
+                cursor = conn.cursor()
                 
                 # Get next version number if not provided
                 if version is None:
@@ -235,88 +275,71 @@ class ContextManager:
                     dependencies = list(dependencies) if hasattr(dependencies, '__iter__') else []
                 
                 # Ensure all values are properly formatted
-                generated_at_str = None
-                if output.generated_at:
-                    if isinstance(output.generated_at, datetime):
-                        generated_at_str = output.generated_at.isoformat()
-                    elif isinstance(output.generated_at, str):
-                        generated_at_str = output.generated_at
+                generated_at = output.generated_at
+                if generated_at and isinstance(generated_at, str):
+                    generated_at = datetime.fromisoformat(generated_at)
                 
-                # Check if output_id already exists
+                # Use INSERT ... ON CONFLICT for upsert
                 cursor.execute("""
-                    SELECT output_id FROM agent_outputs WHERE output_id = ?
-                """, (output_id,))
-                exists = cursor.fetchone() is not None
+                    INSERT INTO agent_outputs (
+                        output_id, project_id, agent_type, document_type,
+                        content, file_path, quality_score, status,
+                        dependencies, generated_at, version, approved
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (output_id) DO UPDATE SET
+                        content = EXCLUDED.content,
+                        file_path = EXCLUDED.file_path,
+                        quality_score = EXCLUDED.quality_score,
+                        status = EXCLUDED.status,
+                        dependencies = EXCLUDED.dependencies,
+                        generated_at = EXCLUDED.generated_at,
+                        approved = EXCLUDED.approved
+                """, (
+                    output_id,
+                    project_id,
+                    output.agent_type.value,
+                    output.document_type,
+                    output.content,
+                    output.file_path,
+                    output.quality_score,
+                    output.status.value,
+                    json.dumps(dependencies),
+                    generated_at,
+                    version,
+                    0  # Default: pending approval
+                ))
                 
-                if exists:
-                    # Update existing record (handles case where same version is saved multiple times)
-                    cursor.execute("""
-                        UPDATE agent_outputs SET
-                            content = ?,
-                            file_path = ?,
-                            quality_score = ?,
-                            status = ?,
-                            dependencies = ?,
-                            generated_at = ?,
-                            approved = ?
-                        WHERE output_id = ?
-                    """, (
-                        output.content,
-                        output.file_path,
-                        output.quality_score,
-                        output.status.value,
-                        json.dumps(dependencies),
-                        generated_at_str,
-                        0,  # Default: pending approval
-                        output_id
-                    ))
-                else:
-                    # Insert new record
-                    cursor.execute("""
-                        INSERT INTO agent_outputs (
-                            output_id, project_id, agent_type, document_type,
-                            content, file_path, quality_score, status,
-                            dependencies, generated_at, version, approved
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        output_id,
-                        project_id,
-                        output.agent_type.value,
-                        output.document_type,
-                        output.content,
-                        output.file_path,
-                        output.quality_score,
-                        output.status.value,
-                        json.dumps(dependencies),
-                        generated_at_str,
-                        version,
-                        0  # Default: pending approval
-                    ))
-                
-                self.connection.commit()
+                conn.commit()
+                cursor.close()
             except Exception as e:
                 # Log error and re-raise
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.error(f"Error saving agent output for {project_id}/{output.agent_type.value}: {e}", exc_info=True)
-                self.connection.rollback()
+                conn.rollback()
                 raise
     
     def get_agent_output(self, project_id: str, agent_type: AgentType) -> Optional[AgentOutput]:
         """Get agent output for a project (latest version)"""
         with self._lock:
-            cursor = self.connection.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             # Get the latest version of the document
             cursor.execute("""
                 SELECT * FROM agent_outputs 
-                WHERE project_id = ? AND agent_type = ?
+                WHERE project_id = %s AND agent_type = %s
                 ORDER BY version DESC LIMIT 1
             """, (project_id, agent_type.value))
             row = cursor.fetchone()
+            cursor.close()
             
             if not row:
                 return None
+            
+            generated_at = row["generated_at"]
+            if generated_at and isinstance(generated_at, str):
+                generated_at = datetime.fromisoformat(generated_at)
             
             return AgentOutput(
                 agent_type=AgentType(row["agent_type"]),
@@ -325,21 +348,26 @@ class ContextManager:
                 file_path=row["file_path"],
                 quality_score=row["quality_score"],
                 status=DocumentStatus(row["status"]),
-                generated_at=datetime.fromisoformat(row["generated_at"]) if row["generated_at"] else None,
+                generated_at=generated_at,
                 dependencies=json.loads(row["dependencies"] or "[]")
             )
     
     def get_all_agent_outputs(self, project_id: str) -> Dict[AgentType, AgentOutput]:
         """Get all agent outputs for a project"""
-        cursor = self.connection.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
             SELECT * FROM agent_outputs 
-            WHERE project_id = ? AND status = ?
+            WHERE project_id = %s AND status = %s
         """, (project_id, DocumentStatus.COMPLETE.value))
         
         outputs = {}
         for row in cursor.fetchall():
             agent_type = AgentType(row["agent_type"])
+            generated_at = row["generated_at"]
+            if generated_at and isinstance(generated_at, str):
+                generated_at = datetime.fromisoformat(generated_at)
+            
             outputs[agent_type] = AgentOutput(
                 agent_type=agent_type,
                 document_type=row["document_type"],
@@ -347,24 +375,32 @@ class ContextManager:
                 file_path=row["file_path"],
                 quality_score=row["quality_score"],
                 status=DocumentStatus(row["status"]),
-                generated_at=datetime.fromisoformat(row["generated_at"]) if row["generated_at"] else None,
+                generated_at=generated_at,
                 dependencies=json.loads(row["dependencies"] or "[]")
             )
         
+        cursor.close()
         return outputs
     
     def save_cross_reference(self, project_id: str, ref: CrossReference):
         """Save cross-reference (thread-safe)"""
         with self._lock:
             try:
-                cursor = self.connection.cursor()
+                conn = self._get_connection()
+                cursor = conn.cursor()
                 ref_id = f"{project_id}_{ref.from_document}_{ref.to_document}"
                 
                 cursor.execute("""
-                    INSERT OR REPLACE INTO cross_references (
+                    INSERT INTO cross_references (
                         ref_id, project_id, from_document, to_document,
                         reference_type, description
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (ref_id) DO UPDATE SET
+                        project_id = EXCLUDED.project_id,
+                        from_document = EXCLUDED.from_document,
+                        to_document = EXCLUDED.to_document,
+                        reference_type = EXCLUDED.reference_type,
+                        description = EXCLUDED.description
                 """, (
                     ref_id,
                     project_id,
@@ -374,7 +410,8 @@ class ContextManager:
                     ref.description
                 ))
                 
-                self.connection.commit()
+                conn.commit()
+                cursor.close()
             except Exception as e:
                 import logging
                 logger = logging.getLogger(__name__)
@@ -383,13 +420,15 @@ class ContextManager:
     
     def get_shared_context(self, project_id: str) -> SharedContext:
         """Get complete shared context for a project"""
-        cursor = self.connection.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         # Get project
-        cursor.execute("SELECT * FROM projects WHERE project_id = ?", (project_id,))
+        cursor.execute("SELECT * FROM projects WHERE project_id = %s", (project_id,))
         project_row = cursor.fetchone()
         
         if not project_row:
+            cursor.close()
             raise ValueError(f"Project {project_id} not found")
         
         # Get requirements
@@ -400,7 +439,7 @@ class ContextManager:
         
         # Get workflow status
         cursor.execute("""
-            SELECT agent_type, status FROM agent_outputs WHERE project_id = ?
+            SELECT agent_type, status FROM agent_outputs WHERE project_id = %s
         """, (project_id,))
         
         workflow_status = {
@@ -409,7 +448,7 @@ class ContextManager:
         }
         
         # Get cross-references
-        cursor.execute("SELECT * FROM cross_references WHERE project_id = ?", (project_id,))
+        cursor.execute("SELECT * FROM cross_references WHERE project_id = %s", (project_id,))
         cross_references = [
             CrossReference(
                 from_document=row["from_document"],
@@ -420,6 +459,14 @@ class ContextManager:
             for row in cursor.fetchall()
         ]
         
+        created_at = project_row["created_at"]
+        updated_at = project_row["updated_at"]
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+        if isinstance(updated_at, str):
+            updated_at = datetime.fromisoformat(updated_at)
+        
+        cursor.close()
         return SharedContext(
             project_id=project_id,
             user_idea=project_row["user_idea"],
@@ -427,8 +474,8 @@ class ContextManager:
             agent_outputs=agent_outputs,
             cross_references=cross_references,
             workflow_status=workflow_status,
-            created_at=datetime.fromisoformat(project_row["created_at"]),
-            updated_at=datetime.fromisoformat(project_row["updated_at"])
+            created_at=created_at,
+            updated_at=updated_at
         )
     
     def update_project_status(
@@ -458,51 +505,52 @@ class ContextManager:
         """
         with self._lock:
             try:
-                cursor = self.connection.cursor()
-                now = datetime.now().isoformat()
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                now = datetime.now()
                 
                 # Check if status record exists
-                cursor.execute("SELECT status, started_at FROM project_status WHERE project_id = ?", (project_id,))
+                cursor.execute("SELECT status, started_at FROM project_status WHERE project_id = %s", (project_id,))
                 existing = cursor.fetchone()
                 
                 if existing:
                     # Update existing status
-                    update_fields = ["status = ?"]
+                    update_fields = ["status = %s"]
                     update_values = [status]
                     
                     if completed_agents is not None:
-                        update_fields.append("completed_agents = ?")
+                        update_fields.append("completed_agents = %s")
                         update_values.append(json.dumps(completed_agents) if completed_agents else "[]")
                     
                     if results is not None:
-                        update_fields.append("results = ?")
+                        update_fields.append("results = %s")
                         update_values.append(json.dumps(results) if results else "{}")
                     
                     if error is not None:
-                        update_fields.append("error = ?")
-                        update_fields.append("failed_at = ?")
+                        update_fields.append("error = %s")
+                        update_fields.append("failed_at = %s")
                         update_values.append(error)
                         update_values.append(now)
                     elif status == "complete":
-                        update_fields.append("completed_at = ?")
+                        update_fields.append("completed_at = %s")
                         update_values.append(now)
                     
                     if selected_documents is not None:
-                        update_fields.append("selected_documents = ?")
+                        update_fields.append("selected_documents = %s")
                         update_values.append(json.dumps(selected_documents))
 
                     update_values.append(project_id)
                     cursor.execute(f"""
                         UPDATE project_status 
                         SET {', '.join(update_fields)}
-                        WHERE project_id = ?
+                        WHERE project_id = %s
                     """, update_values)
                     
                     # Also update projects table updated_at
                     cursor.execute("""
                         UPDATE projects 
-                        SET updated_at = ?
-                        WHERE project_id = ?
+                        SET updated_at = %s
+                        WHERE project_id = %s
                     """, (now, project_id))
                 else:
                     # Create new status record
@@ -513,7 +561,7 @@ class ContextManager:
                         INSERT INTO project_status (
                             project_id, status, user_idea, profile, provider_name,
                             started_at, completed_agents, results, error, phase1_approved, selected_documents
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         project_id,
                         status,
@@ -528,7 +576,8 @@ class ContextManager:
                         json.dumps(selected_documents or []),
                     ))
                 
-                self.connection.commit()
+                conn.commit()
+                cursor.close()
             except Exception as e:
                 import logging
                 logger = logging.getLogger(__name__)
@@ -536,7 +585,7 @@ class ContextManager:
                 raise
     
     def _safe_get_row_value(self, row, key: str, default):
-        """Safely get a value from sqlite3.Row, returning default if key doesn't exist"""
+        """Safely get a value from dict-like row, returning default if key doesn't exist"""
         try:
             return row[key]
         except (KeyError, IndexError):
@@ -552,9 +601,11 @@ class ContextManager:
         Returns:
             Status dictionary or None if not found
         """
-        cursor = self.connection.cursor()
-        cursor.execute("SELECT * FROM project_status WHERE project_id = ?", (project_id,))
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT * FROM project_status WHERE project_id = %s", (project_id,))
         row = cursor.fetchone()
+        cursor.close()
         
         if not row:
             return None
@@ -565,9 +616,9 @@ class ContextManager:
             "user_idea": row["user_idea"],
             "profile": row["profile"],
             "provider_name": row["provider_name"],
-            "started_at": row["started_at"],
-            "completed_at": row["completed_at"],
-            "failed_at": row["failed_at"],
+            "started_at": row["started_at"].isoformat() if isinstance(row["started_at"], datetime) else row["started_at"],
+            "completed_at": row["completed_at"].isoformat() if row["completed_at"] and isinstance(row["completed_at"], datetime) else row["completed_at"],
+            "failed_at": row["failed_at"].isoformat() if row["failed_at"] and isinstance(row["failed_at"], datetime) else row["failed_at"],
             "error": row["error"],
             "completed_agents": json.loads(row["completed_agents"] or "[]"),
             "results": json.loads(row["results"] or "{}") if row["results"] else {},
@@ -593,16 +644,18 @@ class ContextManager:
         """
         with self._lock:
             try:
-                cursor = self.connection.cursor()
-                now = datetime.now().isoformat()
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                now = datetime.now()
                 
                 cursor.execute("""
                     UPDATE project_status 
-                    SET phase1_approved = ?, phase1_approved_at = ?, phase1_approval_notes = ?
-                    WHERE project_id = ?
+                    SET phase1_approved = %s, phase1_approved_at = %s, phase1_approval_notes = %s
+                    WHERE project_id = %s
                 """, (1, now, notes, project_id))
                 
-                self.connection.commit()
+                conn.commit()
+                cursor.close()
                 return True
             except Exception as e:
                 import logging
@@ -623,16 +676,18 @@ class ContextManager:
         """
         with self._lock:
             try:
-                cursor = self.connection.cursor()
-                now = datetime.now().isoformat()
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                now = datetime.now()
                 
                 cursor.execute("""
                     UPDATE project_status 
-                    SET phase1_approved = ?, phase1_approved_at = ?, phase1_approval_notes = ?, status = ?
-                    WHERE project_id = ?
+                    SET phase1_approved = %s, phase1_approved_at = %s, phase1_approval_notes = %s, status = %s
+                    WHERE project_id = %s
                 """, (2, now, notes, "phase1_rejected", project_id))
                 
-                self.connection.commit()
+                conn.commit()
+                cursor.close()
                 return True
             except Exception as e:
                 import logging
@@ -650,9 +705,11 @@ class ContextManager:
         Returns:
             True if approved, False if rejected, None if pending
         """
-        cursor = self.connection.cursor()
-        cursor.execute("SELECT phase1_approved FROM project_status WHERE project_id = ?", (project_id,))
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT phase1_approved FROM project_status WHERE project_id = %s", (project_id,))
         row = cursor.fetchone()
+        cursor.close()
         
         if not row:
             return None
@@ -681,18 +738,20 @@ class ContextManager:
             try:
                 import logging
                 logger = logging.getLogger(__name__)
-                cursor = self.connection.cursor()
-                now = datetime.now().isoformat()
+                conn = self._get_connection()
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                now = datetime.now()
                 
                 # First, check if document exists
                 cursor.execute("""
                     SELECT version, approved FROM agent_outputs 
-                    WHERE project_id = ? AND agent_type = ?
+                    WHERE project_id = %s AND agent_type = %s
                     ORDER BY version DESC LIMIT 1
                 """, (project_id, agent_type.value))
                 existing = cursor.fetchone()
                 
                 if not existing:
+                    cursor.close()
                     logger.warning(f"No document found to approve: project_id={project_id}, agent_type={agent_type.value}")
                     return False
                 
@@ -702,12 +761,13 @@ class ContextManager:
                 # Update the latest version of the document (use explicit version number to avoid subquery issues)
                 cursor.execute("""
                     UPDATE agent_outputs 
-                    SET approved = ?, approved_at = ?, approval_notes = ?
-                    WHERE project_id = ? AND agent_type = ? AND version = ?
+                    SET approved = %s, approved_at = %s, approval_notes = %s
+                    WHERE project_id = %s AND agent_type = %s AND version = %s
                 """, (1, now, notes, project_id, agent_type.value, max_version))
                 
                 rows_affected = cursor.rowcount
-                self.connection.commit()
+                conn.commit()
+                cursor.close()
                 
                 if rows_affected == 0:
                     logger.warning(f"No rows updated when approving document: project_id={project_id}, agent_type={agent_type.value}")
@@ -735,21 +795,23 @@ class ContextManager:
         """
         with self._lock:
             try:
-                cursor = self.connection.cursor()
-                now = datetime.now().isoformat()
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                now = datetime.now()
                 output_id = f"{project_id}_{agent_type.value}"
                 
                 # Update the latest version of the document
                 cursor.execute("""
                     UPDATE agent_outputs 
-                    SET approved = ?, approved_at = ?, approval_notes = ?
-                    WHERE project_id = ? AND agent_type = ? AND version = (
+                    SET approved = %s, approved_at = %s, approval_notes = %s
+                    WHERE project_id = %s AND agent_type = %s AND version = (
                         SELECT MAX(version) FROM agent_outputs 
-                        WHERE project_id = ? AND agent_type = ?
+                        WHERE project_id = %s AND agent_type = %s
                     )
                 """, (2, now, notes, project_id, agent_type.value, project_id, agent_type.value))
                 
-                self.connection.commit()
+                conn.commit()
+                cursor.close()
                 return True
             except Exception as e:
                 import logging
@@ -769,15 +831,17 @@ class ContextManager:
             True if approved, False if rejected, None if pending
         """
         with self._lock:
-            cursor = self.connection.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             # Get the latest version of the document (regardless of approval status)
             # This ensures we check the most recent version, not an old rejected version
             cursor.execute("""
                 SELECT version, approved FROM agent_outputs 
-                WHERE project_id = ? AND agent_type = ?
+                WHERE project_id = %s AND agent_type = %s
                 ORDER BY version DESC LIMIT 1
             """, (project_id, agent_type.value))
             row = cursor.fetchone()
+            cursor.close()
             
             if not row:
                 return None  # Document not generated yet
@@ -803,13 +867,15 @@ class ContextManager:
         Returns:
             Version number (default: 1)
         """
-        cursor = self.connection.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
             SELECT version FROM agent_outputs 
-            WHERE project_id = ? AND agent_type = ?
+            WHERE project_id = %s AND agent_type = %s
             ORDER BY version DESC LIMIT 1
         """, (project_id, agent_type.value))
         row = cursor.fetchone()
+        cursor.close()
         
         if not row:
             return 1
@@ -841,74 +907,56 @@ class ContextManager:
         """
         with self._lock:
             try:
-                cursor = self.connection.cursor()
+                conn = self._get_connection()
+                cursor = conn.cursor()
                 
                 # Get next version number
                 if version is None:
                     current_version = self.get_document_version(project_id, agent_type)
                     version = current_version + 1
                 output_id = f"{project_id}_{agent_type.value}_v{version}"
-                now = datetime.now().isoformat()
+                now = datetime.now()
                 
                 # Get document type from agent type
                 document_type = agent_type.value.replace("_", " ").title()
                 
-                # Check if output_id already exists
+                # Use INSERT ... ON CONFLICT for upsert
                 cursor.execute("""
-                    SELECT output_id FROM agent_outputs WHERE output_id = ?
-                """, (output_id,))
-                exists = cursor.fetchone() is not None
+                    INSERT INTO agent_outputs (
+                        output_id, project_id, agent_type, document_type,
+                        content, file_path, quality_score, status,
+                        dependencies, generated_at, version, approved
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (output_id) DO UPDATE SET
+                        content = EXCLUDED.content,
+                        file_path = EXCLUDED.file_path,
+                        quality_score = EXCLUDED.quality_score,
+                        status = EXCLUDED.status,
+                        generated_at = EXCLUDED.generated_at,
+                        approved = EXCLUDED.approved
+                """, (
+                    output_id,
+                    project_id,
+                    agent_type.value,
+                    document_type,
+                    content,
+                    file_path,
+                    quality_score,
+                    DocumentStatus.COMPLETE.value,
+                    json.dumps([]),
+                    now,
+                    version,
+                    0  # Pending approval
+                ))
                 
-                if exists:
-                    # Update existing record (handles case where same version is saved multiple times)
-                    cursor.execute("""
-                        UPDATE agent_outputs SET
-                            content = ?,
-                            file_path = ?,
-                            quality_score = ?,
-                            status = ?,
-                            generated_at = ?,
-                            approved = ?
-                        WHERE output_id = ?
-                    """, (
-                        content,
-                        file_path,
-                        quality_score,
-                        DocumentStatus.COMPLETE.value,
-                        now,
-                        0,  # Pending approval
-                        output_id
-                    ))
-                else:
-                    # Insert new record
-                    cursor.execute("""
-                        INSERT INTO agent_outputs (
-                            output_id, project_id, agent_type, document_type,
-                            content, file_path, quality_score, status,
-                            dependencies, generated_at, version, approved
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        output_id,
-                        project_id,
-                        agent_type.value,
-                        document_type,
-                        content,
-                        file_path,
-                        quality_score,
-                        DocumentStatus.COMPLETE.value,
-                        json.dumps([]),
-                        now,
-                        version,
-                        0  # Pending approval
-                    ))
-                
-                self.connection.commit()
+                conn.commit()
+                cursor.close()
                 return version
             except Exception as e:
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.error(f"Error saving document version for {project_id}/{agent_type.value}: {e}", exc_info=True)
-                self.connection.rollback()
+                conn.rollback()
                 raise
     
     def get_documents_for_project(
@@ -957,7 +1005,7 @@ class ContextManager:
 
     def close(self):
         """Close database connection"""
-        if self.connection:
+        if self.connection and not self.connection.closed:
             self.connection.close()
     
     def __enter__(self):

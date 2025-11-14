@@ -1,180 +1,167 @@
-# OmniDoc (DOCU-GEN)
+# OmniDoc
 
-AI-powered documentation generation system that creates comprehensive documentation from simple user ideas using multi-agent collaboration. Supports multiple LLM providers (Gemini, Ollama, OpenAI) with configurable per-agent provider selection.
+AI-powered documentation generation system that creates comprehensive documentation from simple user ideas using multi-agent collaboration.
+
+## 🎯 What is OmniDoc?
+
+OmniDoc is an intelligent documentation generator that takes your project idea and automatically creates a complete set of professional documents including:
+
+- **Requirements & Planning**: Requirements documents, project charters, user stories
+- **Business Documents**: Business models, marketing plans, stakeholder communications
+- **Technical Documentation**: Technical specs, API documentation, database schemas
+- **Developer Resources**: Developer guides, test documentation, setup guides
+- **User Documentation**: User guides, support playbooks, legal compliance
+
+All generated from a simple description of your project idea!
 
 ## 🚀 Quick Start
 
-### 1. Install Dependencies
+### 1. Prerequisites
+
+- **Python 3.9+**
+- **Node.js 18+** (for frontend)
+- **PostgreSQL** (database)
+- **Redis** (for task queue and caching)
+
+### 2. Installation
 
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd OmniDoc
 
-# Run setup script (uses uv to sync from pyproject.toml)
+# Run the setup script (installs everything)
 ./scripts/setup.sh
 ```
 
 The setup script will:
-- Create a virtual environment (`.venv`)
-- Install all dependencies from `pyproject.toml`
-- Verify installation
-- Support both `uv` (recommended) and `pip` fallback
+- ✅ Check all prerequisites
+- ✅ Set up Python backend environment
+- ✅ Install frontend dependencies
+- ✅ Configure PostgreSQL database
+- ✅ Create `.env` file with defaults
 
-### 2. Configure Environment
+### 3. Configuration
+
+Edit `.env` file and add your API keys:
 
 ```bash
-# Copy the example environment file
-cp .env.example .env
-
-# Edit .env and configure your Gemini API key
-```
-
-**Required Configuration:**
-```bash
-# In .env file
-
-# LLM Provider Configuration (choose one)
-LLM_PROVIDER=gemini  # Options: gemini, ollama, openai (default: gemini)
-
-# Gemini Configuration (if LLM_PROVIDER=gemini)
+# Required: LLM Provider
+LLM_PROVIDER=gemini
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_DEFAULT_MODEL=gemini-2.0-flash  # Optional: gemini-2.5-flash, gemini-2.5-pro
 
-# Gemini Phase Model Configuration (Optional - Advanced)
-# Configure different models for different phases to balance speed and quality
-GEMINI_PHASE1_MODEL=gemini-2.0-flash  # Phase 1: Fast decision documents (high free quota)
-GEMINI_PHASE2_MODEL=gemini-2.0-pro    # Phase 2: High-quality technical documents
-GEMINI_PHASE3_MODEL=gemini-2.0-pro    # Phase 3: High-quality API/dev documents
-GEMINI_PHASE4_MODEL=gemini-2.0-flash  # Phase 4: User/support documents
+# Database (auto-configured by setup script)
+DATABASE_URL=postgresql://localhost/omnidoc
 
-# Ollama Configuration (if LLM_PROVIDER=ollama)
-OLLAMA_BASE_URL=http://localhost:11434  # Optional, defaults to localhost:11434
-OLLAMA_MODEL=dolphin3  # Optional, defaults to first available model
-
-# OpenAI Configuration (if LLM_PROVIDER=openai)
-OPENAI_API_KEY=your_openai_api_key_here
-# Note: Requires installing openai optional dependency: pip install .[openai]
+# Redis (auto-configured by setup script)
+REDIS_URL=redis://localhost:6379/0
 ```
 
-**Get Your Gemini API Key:**
-1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Create a new API key
-3. Copy the key to your `.env` file
+**Get your Gemini API key:** [Google AI Studio](https://aistudio.google.com/app/apikey)
 
-### 3. Generate Documentation
+### 4. Start the Application
 
+**Terminal 1 - Backend Server:**
 ```bash
-# Using CLI
-uv run python -c "
-from src.coordination.coordinator import WorkflowCoordinator
-coordinator = WorkflowCoordinator()
-coordinator.generate_all_docs('Build a task management app')
-"
-
-# Or use web interface
-uv run python -m src.web.app
-# Visit http://localhost:8000
+python backend/uvicorn_dev.py
+# Server runs at http://localhost:8000
 ```
 
-## 📋 Features
+**Terminal 2 - Celery Worker (for background tasks):**
+```bash
+./scripts/start_celery_worker.sh
+```
 
-### Core Capabilities
+**Terminal 3 - Frontend (optional, for web UI):**
+```bash
+cd frontend
+pnpm dev  # or npm run dev
+# Frontend runs at http://localhost:3000
+```
 
-- **21 Documentation Agents**: Requirements, PM, Technical, API, Developer, Stakeholder, User, Test, Quality Review, Format Converter, Business Model, Marketing Plan, Legal Compliance, Database Schema, Setup Guide, User Stories, Support Playbook, and more
-- **Hybrid Workflow**: 
-  - **Phase 1 (Sequential with Approval)**: Strategic & business foundation documents (Requirements, Project Charter, User Stories, Business Model, Marketing Plan, PM Documentation, Stakeholder Communication) are generated **sequentially** with iterative quality loops (V1 → V2 → V3) and **per-document user approval** before proceeding to the next document
-  - **Phase 2 (Parallel Execution)**: Technical documents (Technical Documentation, Database Schema, API Documentation, Setup Guide) generated in parallel using DAG-based async execution with dependency resolution (3x faster)
-  - **Phase 3 (Parallel Execution)**: Development & testing documents (Developer Documentation, Test Documentation) generated in parallel
-  - **Phase 4 (Parallel Execution)**: User & support documents (User Documentation, Support Playbook, Legal Compliance) generated in parallel
-  - **Final Packaging**: Cross-referencing, quality review, and format conversion
-  - **Code Analysis** (Optional): Codebase analysis and documentation updates
-- **LLM Provider**: 
-  - **Multiple Providers Supported**: Gemini, Ollama, OpenAI
-  - **Default Provider**: `gemini` (configurable via `LLM_PROVIDER` environment variable)
-  - **Per-Agent Configuration**: Optional per-agent provider configuration for hybrid setups
-  - **Gemini Models**: `gemini-2.0-flash` (default), `gemini-2.5-flash`, `gemini-2.5-pro`
-  - **Ollama**: Local models for fast development and testing
-  - **OpenAI**: GPT-4o-mini, GPT-4o, GPT-3.5-turbo
-- **Format Conversion**: Outputs Markdown, HTML, PDF, DOCX
-- **Quality Assurance**: Automated quality checks with document-type-specific criteria and structured LLM-as-Judge feedback
-- **Document Versioning**: Incremental improvement system (V1 → V2 → V3) with version tracking in database
-- **Approval Workflow**: Per-document approval system for Phase 1 documents - each document waits for user approval before proceeding
-- **Parallel Execution**: Async parallel execution with DAG-based dependencies (Phase 2-4, 3x speedup)
-- **Web Interface**: FastAPI web app with real-time progress tracking via WebSocket and interactive approval UI
-- **Error Handling**: Retry logic with exponential backoff
-- **Document Templates**: Jinja2-based customizable templates
-- **Cross-Referencing**: Automatic linking between documents
-- **Intelligent Parsing**: Structured data extraction from requirements
-- **Context Management**: SQLite-based shared context across agents (stateless web app)
-- **Rate Limiting**: Built-in rate limiting and caching
-- **WebSocket Support**: Real-time progress updates (falls back to polling if WebSocket fails)
+### 5. Use the Application
 
-### LLM Provider Features
+- **Web Interface**: Visit `http://localhost:3000`
+- **API**: Visit `http://localhost:8000/docs` for interactive API documentation
 
-- **Gemini Provider** (Default):
-  - **Default Model**: `gemini-2.0-flash` (recommended balance of quality and speed)
-  - **Alternative Models**: `gemini-2.5-flash` (higher quality), `gemini-2.5-pro` (highest quality)
-  - **Rate Limit Handling**: Automatic retry with exponential backoff
-  - **Token Limits**: 1M TPM (tokens per minute), 15 RPM (requests per minute), 200 RPD (requests per day) on free tier
-  - **High-Quality Output**: Optimized for complex documentation tasks
-  - **Configuration**: Set `LLM_PROVIDER=gemini` and `GEMINI_DEFAULT_MODEL` environment variables
-  - **Phase Model Configuration**: Use `GEMINI_PHASE{N}_MODEL` to configure different models for different phases (e.g., `GEMINI_PHASE1_MODEL=gemini-2.0-flash`, `GEMINI_PHASE2_MODEL=gemini-2.0-pro`)
+## 📚 Documentation
 
-- **Ollama Provider** (Local Development):
-  - **Usage**: Set `LLM_PROVIDER=ollama` in `.env` file
-  - **Benefits**: Fast, local, no API costs, privacy
-  - **Models**: Any Ollama model (e.g., `dolphin3`, `mixtral`)
-  - **Configuration**: 
-    - `OLLAMA_BASE_URL`: Ollama API base URL (default: `http://localhost:11434`)
-    - `OLLAMA_DEFAULT_MODEL`: Model name (default: `dolphin3`)
-    - `OLLAMA_MAX_TOKENS`: **CRITICAL** - Maximum tokens for completion (default: `8192`)
-      - Many local models have very low default max_tokens (e.g., 512), causing incomplete outputs
-      - Set to `8192` (8K) for small models, `16384` (16K) for medium models, `32768` (32K) for large models
-    - `OLLAMA_TIMEOUT`: Base timeout in seconds (default: `600` = 10 minutes)
-      - **NOTE**: This is a *default* timeout. The actual timeout is dynamically calculated based on `OLLAMA_MAX_TOKENS`
-      - Dynamic timeout calculation: base timeout + estimated generation time (based on max_tokens)
-      - Maximum timeout: `1800` seconds (30 minutes) for very long outputs
-      - The timeout automatically increases with `OLLAMA_MAX_TOKENS` to ensure complete document generation
-  - **Phase Model Configuration**: Use `OLLAMA_PHASE{N}_MODEL` to configure different models for different phases (e.g., `OLLAMA_PHASE1_MODEL=dolphin3`, `OLLAMA_PHASE2_MODEL=mixtral`)
+All documentation is in the project root:
 
-- **OpenAI Provider**:
-  - **Usage**: Set `LLM_PROVIDER=openai` in `.env` file
-  - **Required**: Install optional dependency: `pip install .[openai]` or `uv pip install .[openai]`
-  - **Models**: `gpt-4o-mini` (default), `gpt-4o`, `gpt-3.5-turbo`
-  - **Configuration**: Set `OPENAI_API_KEY` environment variable
-  - **Phase Model Configuration**: Use `OPENAI_PHASE{N}_MODEL` to configure different models for different phases (e.g., `OPENAI_PHASE1_MODEL=gpt-4o-mini`, `OPENAI_PHASE2_MODEL=gpt-4o`)
+- **[README_BACKEND.md](README_BACKEND.md)** - Backend setup and API documentation
+- **[README_PRODUCTION.md](README_PRODUCTION.md)** - Production deployment guide
+- **[PRODUCTION_SETUP.md](PRODUCTION_SETUP.md)** - Detailed production setup
+- **[DOCS_INDEX.md](DOCS_INDEX.md)** - Documentation index and quick reference
 
-## 🏗️ Project Structure
+## 🏗️ Architecture
+
+```
+┌─────────────┐      ┌──────────────┐      ┌─────────────┐
+│   Frontend  │─────▶│  FastAPI App │─────▶│  PostgreSQL │
+│  (Next.js)  │      │   (Port 8000)│      │   Database  │
+└─────────────┘      └──────────────┘      └─────────────┘
+                             │
+                             ▼
+                      ┌──────────────┐
+                      │    Redis      │
+                      │  (Broker +    │
+                      │   Cache)      │
+                      └──────────────┘
+                             │
+                             ▼
+                      ┌──────────────┐
+                      │ Celery Worker │
+                      │ (Background   │
+                      │   Tasks)      │
+                      └──────────────┘
+```
+
+## ✨ Key Features
+
+### 🤖 Multi-Agent System
+- **21+ Specialized Agents**: Each agent specializes in a specific document type
+- **Intelligent Workflow**: Sequential approval for strategic docs, parallel execution for technical docs
+- **Quality Assurance**: Automatic quality checks and iterative improvement
+
+### 🔄 Production-Ready Infrastructure
+- **PostgreSQL Database**: Robust, scalable database (migrated from SQLite)
+- **Celery Task Queue**: Background job processing with Redis
+- **Redis Caching**: Fast caching for better performance
+- **JWT Authentication**: Ready for user authentication (infrastructure in place)
+
+### 🌐 Multiple LLM Providers
+- **Gemini** (default): Google's powerful models
+- **Ollama**: Local models for privacy and speed
+- **OpenAI**: GPT models support
+
+### 📊 Real-Time Progress
+- **WebSocket Updates**: Real-time progress tracking
+- **Automatic Fallback**: Falls back to HTTP polling if WebSocket fails
+
+## 📋 Project Structure
 
 ```
 OmniDoc/
 ├── src/                    # Source code
-│   ├── agents/            # Documentation agents (20+ agents)
-│   ├── context/           # Shared context management (SQLite)
-│   ├── coordination/      # Workflow orchestration (Hybrid Workflow)
+│   ├── agents/            # Documentation agents
+│   ├── auth/              # Authentication (JWT, OAuth2)
+│   ├── config/            # Configuration management
+│   ├── context/           # Database context (PostgreSQL)
+│   ├── coordination/      # Workflow orchestration
 │   ├── llm/               # LLM provider abstractions
-│   │   ├── base_provider.py
-│   │   ├── ollama_provider.py    # Ollama local LLM
-│   │   ├── gemini_provider.py    # Google Gemini
-│   │   ├── openai_provider.py    # OpenAI GPT
-│   │   └── provider_factory.py
-│   ├── quality/           # Quality checking (document-type-aware)
-│   ├── rate_limit/        # Rate limiting & caching
-│   ├── utils/             # Utilities (parsers, templates, etc.)
-│   └── web/               # Web interface (FastAPI)
-├── tests/                 # Test suite
-│   ├── unit/              # Unit tests
-│   ├── integration/       # Integration tests
-│   └── e2e/               # End-to-end tests
-├── docs/                  # Generated documentation
-├── templates/             # Document templates (Jinja2)
-├── prompts/               # System prompts (editable)
+│   ├── quality/           # Quality checking
+│   ├── tasks/             # Celery background tasks
+│   ├── utils/             # Utilities (cache, parsers, etc.)
+│   └── web/               # FastAPI web application
+├── frontend/              # Next.js frontend
+├── docs/                  # Generated documentation output
 ├── scripts/               # Setup and utility scripts
-│   └── setup.sh           # Main setup script
-├── examples/              # Usage examples
-├── .env.example           # Environment template
-├── pyproject.toml         # Project configuration
+│   ├── setup.sh           # Main setup script
+│   └── start_celery_worker.sh  # Celery worker starter
+├── config/                # Configuration files
+│   └── document_definitions.json  # Document catalog
+├── .env                   # Environment configuration
+├── pyproject.toml         # Python dependencies
 └── README.md              # This file
 ```
 
@@ -182,301 +169,148 @@ OmniDoc/
 
 ### Environment Variables
 
-**Required Configuration:**
-
-**Gemini API Key:**
-- `GEMINI_API_KEY`: **Required** - Your Google Gemini API key
-  - Get your API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
-
-**Optional Configuration:**
-
-**Gemini Model:**
-- `GEMINI_DEFAULT_MODEL`: Gemini model to use (default: `gemini-2.0-flash`)
-  - Options: `gemini-2.0-flash` (recommended), `gemini-2.5-flash`, `gemini-2.5-pro`
-  - `gemini-2.0-flash`: Best balance (15 RPM, 1M TPM, 200 RPD)
-  - `gemini-2.5-flash`: Higher quality (10 RPM, 250K TPM, 250 RPD)
-  - `gemini-2.5-pro`: Highest quality (2 RPM, 125K TPM, 50 RPD)
-
-**Temperature Control:**
-- `TEMPERATURE`: Global temperature (default: `0.3`)
-- `GEMINI_TEMPERATURE`: Gemini-specific temperature (default: `0.7`)
-
-**Document Summarization:**
-- `MAX_SUMMARY_LENGTH`: Maximum summary length in characters (default: `3000`)
-
-**Application Settings:**
-- `ENVIRONMENT`: Environment mode (`dev`, `prod`, `test`)
-- `LOG_LEVEL`: Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`)
-- `DOCS_DIR`: Output directory for generated docs (default: `docs/`)
-- `RATE_LIMIT_PER_MINUTE`: Rate limit for API calls (default: `50`)
-
-### LLM Provider Configuration
-
-**Multiple LLM providers are supported** (Gemini, Ollama, OpenAI). You can configure the provider via environment variables or per-agent configuration:
-
-#### Method 1: Environment Variable (Recommended)
+See `.env` file for all configuration options. Key settings:
 
 ```bash
-# In .env file
-# Choose your LLM provider
+# LLM Provider
 LLM_PROVIDER=gemini  # Options: gemini, ollama, openai
+GEMINI_API_KEY=your_key_here
 
-# Gemini configuration
-GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_DEFAULT_MODEL=gemini-2.0-flash  # Optional: default is gemini-2.0-flash
+# Database
+DATABASE_URL=postgresql://localhost/omnidoc
 
-# Ollama configuration (if LLM_PROVIDER=ollama)
-OLLAMA_BASE_URL=http://localhost:11434  # Optional, defaults to localhost:11434
-OLLAMA_MODEL=dolphin3  # Optional, defaults to dolphin3
+# Redis
+REDIS_URL=redis://localhost:6379/0
 
-# Ollama maximum tokens (CRITICAL for local models)
-# Many local models have very low default max_tokens (e.g., 512), which can cause incomplete outputs.
-# Set this to a higher value (e.g., 8192, 16384) to ensure complete document generation.
-# The timeout will automatically adjust based on this value (up to 30 minutes for large outputs).
-OLLAMA_MAX_TOKENS=8192  # Default: 8192 (8K tokens) - recommended for small models
-# OLLAMA_MAX_TOKENS=16384  # For medium models (16K tokens)
-# OLLAMA_MAX_TOKENS=32768  # For large models (32K tokens)
-
-# Ollama request timeout (base timeout in seconds)
-# NOTE: This is a DEFAULT timeout. The actual timeout is dynamically calculated
-# based on OLLAMA_MAX_TOKENS and can be up to 30 minutes for large outputs.
-# Dynamic timeout = max(base_timeout, estimated_generation_time), capped at 1800s (30 minutes)
-OLLAMA_TIMEOUT=600  # Default: 600 seconds (10 minutes) - increases automatically based on max_tokens
-
-# OpenAI configuration (if LLM_PROVIDER=openai)
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4o-mini  # Optional
+# Authentication (optional)
+JWT_SECRET_KEY=your-secret-key
+GOOGLE_CLIENT_ID=your_google_client_id
+GITHUB_CLIENT_ID=your_github_client_id
 ```
-
-#### Method 2: Per-Agent Provider Configuration
-
-```python
-from src.coordination.coordinator import WorkflowCoordinator
-
-# Default provider for all agents (from LLM_PROVIDER env var)
-coordinator = WorkflowCoordinator()
-
-# Per-agent provider overrides (e.g., use gemini-2.5-pro for Phase 1, gemini-2.0-flash for Phase 2)
-coordinator = WorkflowCoordinator(
-    provider_config={
-        "requirements_analyst": "gemini",
-        "technical_documentation": "gemini",
-        "api_documentation": "gemini",
-    }
-)
-```
-
-#### Available Models
-
-| Model | Quality | RPM | TPM | RPD | Best For |
-|-------|---------|-----|-----|-----|----------|
-| `gemini-2.0-flash` | ⭐⭐⭐⭐ | 15 | 1M | 200 | **Recommended** - Balanced quality and speed |
-| `gemini-2.5-flash` | ⭐⭐⭐⭐⭐ | 10 | 250K | 250 | Higher quality, slower |
-| `gemini-2.5-pro` | ⭐⭐⭐⭐⭐ | 2 | 125K | 50 | Highest quality, very slow |
-
-**Recommendation**: Use `gemini-2.0-flash` for best balance of quality and speed.
 
 ## 🎯 Usage Examples
 
-### Generate All Documentation
+### Using the Web Interface
+
+1. Start backend and frontend
+2. Visit `http://localhost:3000`
+3. Enter your project idea
+4. Select documents to generate
+5. Watch real-time progress
+6. Download generated documents
+
+### Using the API
 
 ```bash
-# Using CLI
-uv run python -c "
-from src.coordination.coordinator import WorkflowCoordinator
-coordinator = WorkflowCoordinator()
-results = coordinator.generate_all_docs('Build a blog platform with user authentication')
-"
+# Create a project
+curl -X POST http://localhost:8000/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_idea": "Build a task management app",
+    "selected_documents": ["requirements", "technical_doc", "api_doc"]
+  }'
+
+# Check project status
+curl http://localhost:8000/api/projects/{project_id}/status
+
+# Get generated documents
+curl http://localhost:8000/api/projects/{project_id}/documents
 ```
-
-Or in a Python script:
-```python
-from src.coordination.coordinator import WorkflowCoordinator
-
-coordinator = WorkflowCoordinator()
-results = coordinator.generate_all_docs(
-    user_idea="Build a blog platform with user authentication",
-    profile="team"  # or "individual"
-)
-
-# Generates 20+ document types using Hybrid Workflow:
-# Phase 1 (Sequential with Approval - Each document waits for approval):
-# - Requirements → ⏸️ Wait for approval → Continue
-# - Project Charter (team only) → ⏸️ Wait for approval → Continue
-# - User Stories (team only) → ⏸️ Wait for approval → Continue
-# - Business Model (team only) → ⏸️ Wait for approval → Continue
-# - Marketing Plan (team only) → ⏸️ Wait for approval → Continue
-# - PM Documentation (team only) → ⏸️ Wait for approval → Continue
-# - Stakeholder Communication (team only) → ⏸️ Wait for approval → Continue
-# Each document: Generate V1 → Quality Check → Improve (V2/V3) → Save Version → Wait for Approval
-#
-# Phase 2 (Parallel Execution with DAG):
-# - Technical Documentation (depends on Requirements, User Stories)
-# - Database Schema (depends on Requirements, Technical Documentation)
-# - API Documentation (depends on Technical Documentation, Database Schema)
-# - Setup Guide (depends on API Documentation, Technical Documentation, Database Schema)
-#
-# Phase 3 (Parallel Execution):
-# - Developer Documentation (depends on API Documentation, Technical Documentation)
-# - Test Documentation (depends on Technical Documentation)
-#
-# Phase 4 (Parallel Execution):
-# - User Documentation (depends on Requirements)
-# - Support Playbook (depends on User Documentation)
-# - Legal Compliance (depends on Technical Documentation)
-#
-# Final Packaging:
-# - Cross-referencing
-# - Quality Review
-# - Format conversions (HTML, PDF, DOCX)
-```
-
-### Use Web Interface
-
-```bash
-# Start the web server
-uv run python -m src.web.app
-
-# Visit http://localhost:8000
-# Enter your project idea and generate docs!
-```
-
-### Multiple Provider Example
-
-See [examples/multi_provider_example.py](examples/multi_provider_example.py) for examples of using different providers.
 
 ## 🧪 Testing
 
 ```bash
 # Run all tests
-uv run pytest
+pytest
 
-# Unit tests only (fast)
-uv run pytest tests/unit
+# Unit tests only
+pytest tests/unit
 
 # Integration tests
-uv run pytest tests/integration
-
-# E2E tests (requires API key or Ollama)
-uv run pytest tests/e2e
+pytest tests/integration
 
 # With coverage
-uv run pytest --cov=src --cov-report=html
+pytest --cov=src --cov-report=html
 ```
-
-**Current Status:** 100+ tests, 82% code coverage
 
 ## 🛠️ Development
 
 ### Setup Development Environment
 
 ```bash
-# Install with dev dependencies
-uv sync --all-extras
-
-# Or use setup script
 ./scripts/setup.sh
-```
-
-### Running the Application
-
-```bash
-# Activate virtual environment (if not using uv run)
-source .venv/bin/activate
-
-# Or use uv run (recommended)
-uv run python -m src.web.app
 ```
 
 ### Code Quality
 
 ```bash
 # Format code
-uv run black src tests
+black src tests
 
 # Lint code
-uv run ruff check src tests
-
-# Type checking (if using mypy)
-uv run mypy src
+ruff check src tests
 ```
 
-## 🔍 Troubleshooting
+## 🐛 Troubleshooting
 
-### Gemini API Key Issues
+### Database Connection Issues
 
 ```bash
-# Verify your API key is set
-echo $GEMINI_API_KEY
+# Check PostgreSQL is running
+pg_isready
 
-# Or check .env file
-cat .env | grep GEMINI_API_KEY
+# Verify database exists
+psql -l | grep omnidoc
 
-# Get a new API key from Google AI Studio
-# Visit: https://makersuite.google.com/app/apikey
+# Test connection
+psql $DATABASE_URL -c "SELECT 1;"
 ```
 
-### Gemini Rate Limit Errors
+### Redis Connection Issues
 
-If you see rate limit errors:
+```bash
+# Check Redis is running
+redis-cli ping  # Should return PONG
 
-1. **Check your usage**: Visit [Google AI Studio](https://makersuite.google.com/app/apikey) to check your rate limit usage
-2. **Wait and retry**: The system automatically retries with exponential backoff
-3. **Use a different model**: Switch to `gemini-2.5-flash` (10 RPM) or `gemini-2.5-pro` (2 RPM) if you're hitting limits
-4. **Reduce rate limit**: Set `RATE_LIMIT_PER_MINUTE=30` in `.env` to stay well below limits
+# Test connection
+redis-cli info
+```
 
-### Gemini API Errors
+### Celery Worker Not Processing
 
-If you see API errors:
+```bash
+# Check Celery worker status
+celery -A src.tasks.celery_app inspect active
 
-1. **Check API key**: Verify your `GEMINI_API_KEY` is valid
-2. **Check model availability**: Ensure the model name is correct (e.g., `gemini-2.0-flash`)
-3. **Check rate limits**: Visit [Google AI Studio](https://makersuite.google.com/app/apikey) to check your quota
-4. **Review logs**: Check application logs for detailed error messages
+# Check worker logs
+celery -A src.tasks.celery_app worker --loglevel=debug
+```
 
-### Low Quality Scores
-
-If generated documents have low quality scores:
-
-1. **Use a better model**: Switch to `gemini-2.5-flash` or `gemini-2.5-pro` via `GEMINI_DEFAULT_MODEL`, or use per-agent provider configuration for Phase 1 tasks
-2. **Adjust temperature**: Lower temperature (0.3) for more consistent output
-3. **Quality gates**: Phase 1 documents automatically improve if quality is below threshold, using structured LLM-as-Judge feedback for precise improvements
-4. **Check prompts**: Review system prompts in `prompts/system_prompts.py` (includes readability guidelines)
-5. **Structured feedback**: The system uses LLM-as-Judge to provide structured JSON feedback for more precise document improvements
-
-### WebSocket Connection Issues
-
-If WebSocket fails to connect:
-
-1. **Check WebSocket support**: Ensure `websockets` package is installed (`uv sync`)
-2. **Fallback to polling**: The system automatically falls back to HTTP polling if WebSocket fails
-3. **Check browser console**: Look for WebSocket connection errors in browser console
-4. **Verify server**: Ensure the server is running and accessible
+See [README_BACKEND.md](README_BACKEND.md) and [docs/PRODUCTION_SETUP.md](docs/PRODUCTION_SETUP.md) for more troubleshooting tips.
 
 ## 📦 Dependencies
 
-### Core Dependencies
-- `google-generativeai>=0.3.0` - Gemini provider (required)
-- `fastapi>=0.100.0` - Web framework
-- `uvicorn>=0.23.0` - ASGI server
-- `websockets>=12.0` - WebSocket support for real-time updates
-- `python-dotenv>=1.0.0` - Environment variables
-- `jinja2>=3.1.2` - Template engine
-- `pydantic>=2.0.0` - Data validation
-- `markdown>=3.5.0` - Markdown processing
-- `weasyprint>=60.0` - PDF generation
-- `python-docx>=1.1.0` - DOCX generation
-- `aiohttp>=3.9.0` - Async HTTP client
-- `requests>=2.31.0` - HTTP client
+### Backend
+- FastAPI - Web framework
+- Celery - Task queue
+- PostgreSQL (psycopg2) - Database
+- Redis - Cache and broker
+- Multiple LLM providers (Gemini, Ollama, OpenAI)
 
-See [pyproject.toml](pyproject.toml) for complete dependency list.
+### Frontend
+- Next.js 16 - React framework
+- TypeScript - Type safety
+- Tailwind CSS - Styling
+- SWR - Data fetching
+
+See `pyproject.toml` and `frontend/package.json` for complete dependency lists.
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Run tests: `uv run pytest`
+4. Run tests: `pytest`
 5. Submit a pull request
 
 ## 📝 License
@@ -486,100 +320,13 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## 🙏 Acknowledgments
 
 - Built with multi-agent collaboration
-- Supports multiple LLM providers for flexibility
+- Supports multiple LLM providers
+- Production-ready infrastructure
 - Designed for comprehensive documentation generation
-- Hybrid workflow ensures both quality and speed
 
 ---
 
-**Note:** This project uses `uv` to manage dependencies from `pyproject.toml`. 
-- Use `uv run <command>` to run commands in the project environment
-- No need to activate virtual environment manually
-- Dependencies are managed via `pyproject.toml`
-
-## 🎯 Key Features
-
-### Multiple LLM Provider Support
-- **Configurable Providers**: Gemini (default), Ollama (local), OpenAI (GPT models)
-- **Default Provider**: `gemini` (configurable via `LLM_PROVIDER` environment variable)
-- **Per-Agent Configuration**: Optional per-agent provider overrides for hybrid setups
-- **Phase Model Configuration**: Configure different models for different workflow phases to balance speed and quality
-  - **Ollama**: `OLLAMA_PHASE{N}_MODEL` (e.g., Phase 1: `dolphin3`, Phase 2: `mixtral`)
-  - **Gemini**: `GEMINI_PHASE{N}_MODEL` (e.g., Phase 1: `gemini-2.0-flash`, Phase 2: `gemini-2.0-pro`)
-  - **OpenAI**: `OPENAI_PHASE{N}_MODEL` (e.g., Phase 1: `gpt-4o-mini`, Phase 2: `gpt-4o`)
-- **Gemini Models**: `gemini-2.0-flash` (recommended), `gemini-2.5-flash`, `gemini-2.5-pro`
-- **Ollama Models**: Any Ollama model (e.g., `dolphin3`, `mixtral`)
-- **OpenAI Models**: `gpt-4o-mini`, `gpt-4o`, `gpt-3.5-turbo`
-- **Benefits**: Flexibility, cost optimization, local development support, hybrid configurations, phase-based optimization
-
-### Hybrid Workflow
-- **Phase 1 (Sequential with Approval)**: Strategic & business foundation documents are generated **sequentially** with iterative quality improvement (V1 → V2 → V3) and **per-document user approval**. Each document must be approved before the next one is generated. Documents include: Requirements, Project Charter (team only), User Stories (team only), Business Model (team only), Marketing Plan (team only), PM Documentation (team only), Stakeholder Communication (team only)
-- **Phase 2 (Parallel Execution)**: Technical documents generated in parallel with DAG-based dependencies for maximum speed (Technical Documentation, Database Schema, API Documentation, Setup Guide)
-- **Phase 3 (Parallel Execution)**: Development & testing documents generated in parallel (Developer Documentation, Test Documentation)
-- **Phase 4 (Parallel Execution)**: User & support documents generated in parallel (User Documentation, Support Playbook, Legal Compliance)
-- **Final Packaging**: Cross-referencing, quality review, and format conversion
-- **Code Analysis** (Optional): Codebase analysis and documentation updates
-
-### Real-Time Progress Updates
-- **WebSocket**: Real-time progress updates via WebSocket
-- **Fallback**: Automatic fallback to HTTP polling if WebSocket fails
-- **Progress Tracking**: Phase-based progress tracking (Phase 1: 25%, Phase 2: 60%, Phase 3: 85%)
-
-### Quality Assurance
-- **Document-Type-Specific**: Quality checks tailored to each document type
-- **Automatic Improvement**: Low-quality documents are automatically improved using structured LLM-as-Judge feedback
-- **Quality Thresholds**: Configurable quality thresholds for each document type
-- **Quality Reports**: Comprehensive quality reports for all documents
-- **Structured Feedback**: LLM-as-Judge provides structured JSON feedback for precise document improvement
-- **Readability Guidelines**: All prompts include readability guidelines for better document quality
-
-## 📚 Additional Resources
-
-- **Workflow Documentation**: See [CODE_EXECUTION_FLOW.md](CODE_EXECUTION_FLOW.md) for detailed workflow and code execution documentation
-- **Phase Model Configuration**: See [src/utils/phase_model_config.py](src/utils/phase_model_config.py) for phase-based model configuration implementation. Configuration is done via environment variables (e.g., `GEMINI_PHASE1_MODEL`, `OLLAMA_PHASE2_MODEL`)
-- **Ollama Setup**: See [scripts/setup_ollama.sh](scripts/setup_ollama.sh) for Ollama local setup script. Also see README "Ollama Configuration" section above for detailed setup instructions
-- **Configuration Guide**: See [src/config/README.md](src/config/README.md) for detailed configuration options
-- **Examples**: See [examples/](examples/) directory for usage examples
-- **Project Status**: See [PROJECT_STATUS.md](PROJECT_STATUS.md) for current project status and testing information
-
-## 🔄 Workflow Overview
-
-DOCU-GEN uses a **Hybrid Workflow** that combines sequential approval-based execution for strategic documents with parallel execution for technical documents:
-
-1. **Phase 1 (Sequential with Approval)**: Strategic & business foundation documents are generated **one at a time** with iterative quality improvement (V1 → V2 → V3). After each document is generated and improved, the workflow **pauses and waits for user approval** before proceeding to the next document. This ensures critical foundation documents meet user requirements before moving forward.
-   - Documents: Requirements, Project Charter (team only), User Stories (team only), Business Model (team only), Marketing Plan (team only), PM Documentation (team only), Stakeholder Communication (team only)
-   - Process: Generate → Quality Check → Improve (if needed) → Save Version → **Wait for Approval** → Continue
-   
-2. **Phase 2 (Parallel Execution with DAG)**: Technical documents are generated in parallel using DAG-based async execution with dependency resolution for maximum speed. Tasks execute in parallel while respecting dependencies (e.g., API Documentation depends on Technical Documentation and Database Schema).
-   - Documents: Technical Documentation, Database Schema, API Documentation, Setup Guide
-   
-3. **Phase 3 (Parallel Execution)**: Development & testing documents generated in parallel
-   - Documents: Developer Documentation, Test Documentation
-   
-4. **Phase 4 (Parallel Execution)**: User & support documents generated in parallel
-   - Documents: User Documentation, Support Playbook, Legal Compliance
-   
-5. **Final Packaging**: Cross-referencing, quality review (with structured LLM-as-Judge feedback), and format conversion
-
-6. **Code Analysis** (Optional): Codebase analysis and documentation updates
-
-**Key Features:**
-- **Document Versioning**: Each document version (V1, V2, V3) is tracked in the database
-- **Approval Workflow**: Interactive approval UI in web interface - approve or reject each Phase 1 document
-- **Incremental Improvement**: Documents automatically improve if quality score is below threshold (max 3 iterations)
-
-See [CODE_EXECUTION_FLOW.md](CODE_EXECUTION_FLOW.md) for detailed workflow and code execution documentation.
-
-## ⚙️ Architecture
-
-- **Multiple LLM Providers**: Supports Gemini, Ollama, and OpenAI with configurable per-agent provider selection
-- **Sequential Phase 1 Execution**: Phase 1 documents are generated sequentially with per-document approval workflow
-- **Async Execution**: Phase 2-4 agents use native async support for better performance and parallel execution
-- **DAG-Based Dependencies**: Phase 2-4 tasks use directed acyclic graph for dependency management and parallel execution
-- **Quality Gates**: Phase 1 documents use iterative quality loops (V1 → V2 → V3) with structured LLM-as-Judge feedback
-- **Document Versioning**: All document versions are tracked in SQLite database with approval status
-- **Approval System**: Per-document approval workflow with interactive web UI - each Phase 1 document waits for user approval
-- **Task Resilience**: Phase 2-4 tasks continue executing even if some tasks fail, with comprehensive error reporting
-- **Stateless Web App**: Uses SQLite database for project context, status, and document versions (no in-memory state)
-- **WebSocket Support**: Real-time progress updates with WebSocket status display and automatic fallback to HTTP polling
-- **Structured Quality Feedback**: LLM-as-Judge provides structured JSON feedback for precise document improvement
+**Need Help?** Check out:
+- [Backend Documentation](README_BACKEND.md)
+- [Production Setup](docs/PRODUCTION_SETUP.md)
+- [API Documentation](http://localhost:8000/docs) (when server is running)

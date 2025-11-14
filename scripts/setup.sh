@@ -1,10 +1,16 @@
 #!/bin/bash
-# Setup script for DOCU-GEN
+# Complete setup script for OmniDoc
+# Sets up backend, frontend, and database
 # Usage: ./scripts/setup.sh
-# Uses uv to manage dependencies from pyproject.toml
-# All packages are installed in a virtual environment
 
 set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
 # Get the script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,253 +19,390 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Change to project root
 cd "$PROJECT_ROOT"
 
-echo "🚀 Setting up DOCU-GEN..."
-echo "📁 Project root: $PROJECT_ROOT"
+echo -e "${BLUE}🚀 Setting up OmniDoc...${NC}"
+echo -e "${BLUE}📁 Project root: $PROJECT_ROOT${NC}"
+echo ""
 
-# Check for Python
+# =============================================================================
+# Check Prerequisites
+# =============================================================================
+echo -e "${BLUE}📋 Checking prerequisites...${NC}"
+
+# Check Python
 if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 is not installed"
+    echo -e "${RED}❌ Python 3 is not installed${NC}"
     echo "Please install Python 3.9 or higher"
     exit 1
 fi
-
-# Check Python version
 python_version=$(python3 --version 2>&1 | awk '{print $2}')
-echo "📦 Python version: $python_version"
+echo -e "${GREEN}  ✅ Python ${python_version}${NC}"
 
-# Check if uv is installed, if not, offer to install it
+# Check Node.js
+if ! command -v node &> /dev/null; then
+    echo -e "${RED}❌ Node.js is not installed${NC}"
+    echo "Please install Node.js 18 or higher from https://nodejs.org/"
+    exit 1
+fi
+node_version=$(node --version)
+echo -e "${GREEN}  ✅ Node.js ${node_version}${NC}"
+
+# Check npm or pnpm
+if command -v pnpm &> /dev/null; then
+    PACKAGE_MANAGER="pnpm"
+    pnpm_version=$(pnpm --version)
+    echo -e "${GREEN}  ✅ pnpm ${pnpm_version}${NC}"
+elif command -v npm &> /dev/null; then
+    PACKAGE_MANAGER="npm"
+    npm_version=$(npm --version)
+    echo -e "${GREEN}  ✅ npm ${npm_version}${NC}"
+else
+    echo -e "${RED}❌ Neither npm nor pnpm is installed${NC}"
+    echo "Please install npm (comes with Node.js) or pnpm"
+    exit 1
+fi
+
+# Check PostgreSQL
+if ! command -v psql &> /dev/null; then
+    echo -e "${YELLOW}  ⚠️  PostgreSQL client (psql) is not installed${NC}"
+    echo "    Database setup will be skipped. Install PostgreSQL to continue."
+    HAS_POSTGRES=false
+else
+    psql_version=$(psql --version | awk '{print $3}')
+    echo -e "${GREEN}  ✅ PostgreSQL client ${psql_version}${NC}"
+    HAS_POSTGRES=true
+fi
+
+# Check if uv is installed
 if ! command -v uv &> /dev/null; then
-    echo ""
-    echo "⚠️  uv is not installed"
-    echo "📦 uv is a fast Python package installer (recommended)"
-    echo ""
-    # Check if we're in an interactive terminal
+    echo -e "${YELLOW}  ⚠️  uv is not installed (optional but recommended)${NC}"
     if [ -t 0 ]; then
-        read -p "Do you want to install uv? (y/n) " -n 1 -r
+        read -p "    Do you want to install uv? (y/n) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            echo "📦 Installing uv..."
+            echo "    📦 Installing uv..."
             curl -LsSf https://astral.sh/uv/install.sh | sh
-            # Add uv to PATH for current session
             export PATH="$HOME/.cargo/bin:$PATH"
-            # Verify uv is now available
             if command -v uv &> /dev/null; then
                 USE_UV=true
-                echo "✅ uv installed successfully"
+                echo -e "${GREEN}    ✅ uv installed successfully${NC}"
             else
-                echo "⚠️  uv installation may require shell restart. Falling back to pip + venv"
+                echo -e "${YELLOW}    ⚠️  uv installation may require shell restart. Falling back to pip${NC}"
                 USE_UV=false
             fi
         else
-            echo "⚠️  Falling back to pip + venv"
             USE_UV=false
         fi
     else
-        # Non-interactive mode, fall back to pip
-        echo "⚠️  Non-interactive mode detected. Falling back to pip + venv"
         USE_UV=false
     fi
 else
     USE_UV=true
-    echo "✅ uv is installed"
+    uv_version=$(uv --version)
+    echo -e "${GREEN}  ✅ uv ${uv_version}${NC}"
 fi
+
+echo ""
+
+# =============================================================================
+# Setup Backend
+# =============================================================================
+echo -e "${BLUE}🐍 Setting up backend (Python)...${NC}"
 
 # Create virtual environment
 if [ "$USE_UV" = true ]; then
-    # Use uv to create and manage venv
     if [ ! -d ".venv" ]; then
-        echo ""
-        echo "📦 Creating virtual environment with uv..."
+        echo "  📦 Creating virtual environment with uv..."
         uv venv
     else
-        echo ""
-        echo "📦 Virtual environment already exists"
+        echo "  📦 Virtual environment already exists"
     fi
     
-    # Install dependencies from pyproject.toml
-    # uv sync automatically installs the package in editable mode
-    echo ""
-    echo "📦 Installing dependencies from pyproject.toml..."
-    echo "   (This installs the project in editable mode and all dependencies)"
+    echo "  📦 Installing Python dependencies..."
     uv sync --all-extras
 else
-    # Fallback to standard venv + pip
     if [ ! -d ".venv" ]; then
-        echo ""
-        echo "📦 Creating virtual environment..."
+        echo "  📦 Creating virtual environment..."
         python3 -m venv .venv
     else
-        echo ""
-        echo "📦 Virtual environment already exists"
+        echo "  📦 Virtual environment already exists"
     fi
     
-    # Activate virtual environment
-    echo "📦 Activating virtual environment..."
+    echo "  📦 Activating virtual environment..."
     source .venv/bin/activate
     
-    # Upgrade pip
-    echo "📦 Upgrading pip..."
+    echo "  📦 Upgrading pip..."
     pip install --upgrade pip
     
-    # Install the project and all dependencies from pyproject.toml
-    echo ""
-    echo "📦 Installing project and dependencies from pyproject.toml..."
+    echo "  📦 Installing Python dependencies..."
     pip install -e ".[dev,openai,anthropic,full]"
 fi
 
-# Verify installation
-echo ""
-echo "✅ Verifying installation..."
+# Verify backend installation
+echo "  ✅ Verifying backend installation..."
 if [ "$USE_UV" = true ]; then
     uv run python -c "
 import sys
 packages = [
     'google.generativeai',
-    'ratelimit',
-    'diskcache',
-    'textstat',
     'fastapi',
     'uvicorn',
-    'jinja2',
+    'psycopg2',
     'pydantic',
-    'markdown',
-    'requests',  # New Ollama provider dependency
-    'pytest'
 ]
 missing = []
 for pkg in packages:
     try:
-        pkg_name = pkg.replace('.', '_').replace('-', '_')
         if '.' in pkg:
-            # Handle packages with dots like google.generativeai
             parts = pkg.split('.')
             mod = __import__(parts[0])
             for part in parts[1:]:
                 mod = getattr(mod, part)
         else:
-            __import__(pkg_name)
-        print(f'  ✅ {pkg}')
-    except ImportError as e:
-        print(f'  ❌ {pkg} - {e}')
+            __import__(pkg)
+        print(f'    ✅ {pkg}')
+    except ImportError:
+        print(f'    ❌ {pkg}')
         missing.append(pkg)
-
 if missing:
-    print(f'\n⚠️  Missing packages: {missing}')
     sys.exit(1)
-else:
-    print('\n✅ All core packages installed successfully!')
 "
 else
+    source .venv/bin/activate
     python -c "
 import sys
 packages = [
     'google.generativeai',
-    'ratelimit',
-    'diskcache',
-    'textstat',
     'fastapi',
     'uvicorn',
-    'jinja2',
+    'psycopg2',
     'pydantic',
-    'markdown',
-    'requests',  # New Ollama provider dependency
-    'pytest'
 ]
 missing = []
 for pkg in packages:
     try:
-        pkg_name = pkg.replace('.', '_').replace('-', '_')
         if '.' in pkg:
-            # Handle packages with dots like google.generativeai
             parts = pkg.split('.')
             mod = __import__(parts[0])
             for part in parts[1:]:
                 mod = getattr(mod, part)
         else:
-            __import__(pkg_name)
-        print(f'  ✅ {pkg}')
-    except ImportError as e:
-        print(f'  ❌ {pkg} - {e}')
+            __import__(pkg)
+        print(f'    ✅ {pkg}')
+    except ImportError:
+        print(f'    ❌ {pkg}')
         missing.append(pkg)
-
 if missing:
-    print(f'\n⚠️  Missing packages: {missing}')
-    sys.exit(1)
-else:
-    print('\n✅ All core packages installed successfully!')
-"
-fi
-
-# Verify Ollama provider can be imported
-echo ""
-echo "✅ Verifying Ollama provider..."
-if [ "$USE_UV" = true ]; then
-    uv run python -c "
-try:
-    from src.llm.ollama_provider import OllamaProvider
-    from src.llm.provider_factory import ProviderFactory
-    print('  ✅ OllamaProvider imported successfully')
-    
-    # Check if it's registered in the factory
-    providers = ProviderFactory.get_available_providers()
-    if 'ollama' in providers:
-        print('  ✅ Ollama provider registered in ProviderFactory')
-    else:
-        print('  ⚠️  Ollama provider not found in ProviderFactory')
-        print(f'     Available providers: {providers}')
-except ImportError as e:
-    print(f'  ❌ Failed to import OllamaProvider: {e}')
-    sys.exit(1)
-"
-else
-    python -c "
-try:
-    from src.llm.ollama_provider import OllamaProvider
-    from src.llm.provider_factory import ProviderFactory
-    print('  ✅ OllamaProvider imported successfully')
-    
-    # Check if it's registered in the factory
-    providers = ProviderFactory.get_available_providers()
-    if 'ollama' in providers:
-        print('  ✅ Ollama provider registered in ProviderFactory')
-    else:
-        print('  ⚠️  Ollama provider not found in ProviderFactory')
-        print(f'     Available providers: {providers}')
-except ImportError as e:
-    print(f'  ❌ Failed to import OllamaProvider: {e}')
     sys.exit(1)
 "
 fi
 
+echo -e "${GREEN}  ✅ Backend setup complete!${NC}"
 echo ""
-echo "✅ Setup complete!"
-echo ""
-echo "💡 Next steps:"
-echo "   1. Create .env file with your API keys:"
-echo "      - For Gemini: echo 'LLM_PROVIDER=gemini' > .env && echo 'GEMINI_API_KEY=your_key' >> .env"
-echo "      - For Ollama: echo 'LLM_PROVIDER=ollama' > .env && echo 'OLLAMA_DEFAULT_MODEL=dolphin3' >> .env"
-echo "      - For OpenAI: echo 'LLM_PROVIDER=openai' > .env && echo 'OPENAI_API_KEY=your_key' >> .env"
-echo ""
-echo "   2. Activate virtual environment:"
-if [ "$USE_UV" = true ]; then
-    echo "      source .venv/bin/activate  # or use 'uv run' prefix for commands"
+
+# =============================================================================
+# Setup Frontend
+# =============================================================================
+echo -e "${BLUE}⚛️  Setting up frontend (Next.js)...${NC}"
+
+cd "$PROJECT_ROOT/frontend"
+
+# Install dependencies
+if [ "$PACKAGE_MANAGER" = "pnpm" ]; then
+    echo "  📦 Installing dependencies with pnpm..."
+    pnpm install
 else
-    echo "      source .venv/bin/activate"
+    echo "  📦 Installing dependencies with npm..."
+    npm install
+fi
+
+echo -e "${GREEN}  ✅ Frontend setup complete!${NC}"
+echo ""
+
+# =============================================================================
+# Setup Database
+# =============================================================================
+cd "$PROJECT_ROOT"
+
+if [ "$HAS_POSTGRES" = true ]; then
+    echo -e "${BLUE}🗄️  Setting up PostgreSQL database...${NC}"
+    
+    # Check if database exists
+    DB_NAME="omnidoc"
+    DB_URL="${DATABASE_URL:-postgresql://localhost/$DB_NAME}"
+    
+    # Extract connection info from DATABASE_URL if set
+    if [ -n "$DATABASE_URL" ]; then
+        # Parse DATABASE_URL: postgresql://user:pass@host:port/dbname
+        DB_INFO=$(echo "$DATABASE_URL" | sed 's|postgresql://||' | sed 's|@| |' | awk '{print $1, $2}')
+        DB_USER=$(echo "$DB_INFO" | awk '{print $1}' | cut -d: -f1)
+        DB_HOST=$(echo "$DB_INFO" | awk '{print $2}' | cut -d: -f1)
+        DB_PORT=$(echo "$DB_INFO" | awk '{print $2}' | cut -d: -f2 | cut -d/ -f1)
+    else
+        DB_USER="${USER:-postgres}"
+        DB_HOST="localhost"
+        DB_PORT="5432"
+    fi
+    
+    # Try to create database (will fail silently if exists)
+    echo "  📦 Creating database '$DB_NAME' (if not exists)..."
+    if psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
+        echo -e "${GREEN}    ✅ Database '$DB_NAME' already exists${NC}"
+    else
+        if createdb -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USER" "$DB_NAME" 2>/dev/null; then
+            echo -e "${GREEN}    ✅ Database '$DB_NAME' created${NC}"
+        else
+            echo -e "${YELLOW}    ⚠️  Could not create database automatically${NC}"
+            echo "    Please create it manually: createdb $DB_NAME"
+        fi
+    fi
+    
+    # Initialize database tables (will be created automatically on first run)
+    echo "  📦 Database tables will be created automatically on first run"
+    echo -e "${GREEN}  ✅ Database setup complete!${NC}"
+else
+    echo -e "${YELLOW}⚠️  Skipping database setup (PostgreSQL not found)${NC}"
+    echo "    Please install PostgreSQL and run database setup manually"
+fi
+
+echo ""
+
+# =============================================================================
+# Setup Environment File
+# =============================================================================
+echo -e "${BLUE}⚙️  Setting up environment configuration...${NC}"
+
+if [ ! -f ".env" ]; then
+    echo "  📝 Creating .env file from template..."
+    cat > .env << 'ENVEOF'
+# =============================================================================
+# OmniDoc Environment Configuration
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Environment Mode
+# -----------------------------------------------------------------------------
+ENVIRONMENT=dev
+
+# -----------------------------------------------------------------------------
+# Database Configuration (PostgreSQL)
+# -----------------------------------------------------------------------------
+DATABASE_URL=postgresql://localhost/omnidoc
+
+# -----------------------------------------------------------------------------
+# LLM Provider Configuration
+# -----------------------------------------------------------------------------
+LLM_PROVIDER=gemini
+TEMPERATURE=0.3
+
+# -----------------------------------------------------------------------------
+# Gemini Configuration
+# -----------------------------------------------------------------------------
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# -----------------------------------------------------------------------------
+# Web Application Configuration
+# -----------------------------------------------------------------------------
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+BACKEND_HOST=0.0.0.0
+BACKEND_PORT=8000
+
+# -----------------------------------------------------------------------------
+# Document Configuration
+# -----------------------------------------------------------------------------
+DOCUMENT_CONFIG_PATH=config/document_definitions.json
+DOCS_DIR=docs
+MAX_SUMMARY_LENGTH=3000
+
+# -----------------------------------------------------------------------------
+# Logging Configuration
+# -----------------------------------------------------------------------------
+LOG_LEVEL=DEBUG
+LOG_FORMAT=text
+LOG_DIR=logs
+ENVEOF
+    echo -e "${GREEN}  ✅ .env file created${NC}"
+    echo -e "${YELLOW}  ⚠️  Please edit .env and add your API keys!${NC}"
+else
+    echo -e "${GREEN}  ✅ .env file already exists${NC}"
+    
+    # Check if DATABASE_URL is set
+    if ! grep -q "^DATABASE_URL=" .env; then
+        echo "  📝 Adding DATABASE_URL to .env..."
+        if grep -q "# Database Configuration" .env; then
+            sed -i.bak '/# Database Configuration/a\
+DATABASE_URL=postgresql://localhost/omnidoc
+' .env
+        else
+            echo "" >> .env
+            echo "# Database Configuration" >> .env
+            echo "DATABASE_URL=postgresql://localhost/omnidoc" >> .env
+        fi
+        echo -e "${GREEN}    ✅ DATABASE_URL added${NC}"
+    fi
+fi
+
+echo ""
+
+# =============================================================================
+# Verify Document Definitions
+# =============================================================================
+echo -e "${BLUE}📄 Checking document definitions...${NC}"
+
+if [ ! -f "config/document_definitions.json" ]; then
+    echo -e "${YELLOW}  ⚠️  document_definitions.json not found${NC}"
+    if [ -f "JobTrackrAI_Document_Management_Template_v3.csv" ]; then
+        echo "  📦 Generating from CSV..."
+        if [ "$USE_UV" = true ]; then
+            uv run python scripts/csv_to_document_json.py \
+                --input JobTrackrAI_Document_Management_Template_v3.csv \
+                --output config/document_definitions.json
+        else
+            source .venv/bin/activate
+            python scripts/csv_to_document_json.py \
+                --input JobTrackrAI_Document_Management_Template_v3.csv \
+                --output config/document_definitions.json
+        fi
+        echo -e "${GREEN}    ✅ Document definitions generated${NC}"
+    else
+        echo -e "${YELLOW}    ⚠️  CSV file not found. Please generate document_definitions.json manually${NC}"
+    fi
+else
+    echo -e "${GREEN}  ✅ Document definitions found${NC}"
+fi
+
+echo ""
+
+# =============================================================================
+# Summary
+# =============================================================================
+echo -e "${GREEN}✅ Setup complete!${NC}"
+echo ""
+echo -e "${BLUE}💡 Next steps:${NC}"
+echo ""
+echo "  1. Configure your .env file:"
+echo "     - Add your GEMINI_API_KEY (or other LLM provider keys)"
+echo "     - Update DATABASE_URL if needed"
+echo ""
+echo "  2. Start the backend server:"
+if [ "$USE_UV" = true ]; then
+    echo "     cd $PROJECT_ROOT"
+    echo "     uv run python backend/uvicorn_dev.py"
+else
+    echo "     cd $PROJECT_ROOT"
+    echo "     source .venv/bin/activate"
+    echo "     python backend/uvicorn_dev.py"
 fi
 echo ""
-echo "   3. Run tests:"
-if [ "$USE_UV" = true ]; then
-    echo "      uv run pytest tests/unit"
+echo "  3. Start the frontend (in a new terminal):"
+echo "     cd $PROJECT_ROOT/frontend"
+if [ "$PACKAGE_MANAGER" = "pnpm" ]; then
+    echo "     pnpm dev"
 else
-    echo "      pytest tests/unit"
+    echo "     npm run dev"
 fi
 echo ""
-echo "   4. Run web app:"
-if [ "$USE_UV" = true ]; then
-    echo "      uv run python -m src.web.app"
-else
-    echo "      python -m src.web.app"
-fi
+echo "  4. Open your browser:"
+echo "     http://localhost:3000"
 echo ""
-echo "   5. See README.md for more information"
+echo -e "${BLUE}📚 For more information, see README.md and README_BACKEND.md${NC}"
 echo ""

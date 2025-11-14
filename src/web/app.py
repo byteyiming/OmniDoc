@@ -23,6 +23,8 @@ from src.config.document_catalog import (
 from src.coordination.coordinator import WorkflowCoordinator
 from src.context.context_manager import ContextManager
 from src.utils.logger import get_logger
+from src.tasks.generation_tasks import generate_documents_task
+from src.utils.cache import cache_document_templates
 
 logger = get_logger(__name__)
 
@@ -176,6 +178,7 @@ app.add_middleware(
 
 
 @app.get("/api/document-templates", response_model=DocumentCatalogResponse)
+@cache_document_templates(ttl=86400)  # Cache for 24 hours
 async def get_document_templates() -> DocumentCatalogResponse:
     definitions = load_document_definitions()
     generated_at: Optional[str] = None
@@ -237,15 +240,16 @@ async def create_project(request: ProjectCreateRequest) -> ProjectCreateResponse
         selected_documents=request.selected_documents,
     )
 
-    asyncio.create_task(
-        run_generation_async(
-            user_idea=request.user_idea,
-            project_id=project_id,
-            selected_documents=PROJECT_SELECTIONS[project_id],
-            provider_name=request.provider_name,
-            codebase_path=request.codebase_path,
-        )
+    # Submit task to Celery queue instead of asyncio.create_task
+    task = generate_documents_task.delay(
+        project_id=project_id,
+        user_idea=request.user_idea,
+        selected_documents=PROJECT_SELECTIONS[project_id],
+        provider_name=request.provider_name,
+        codebase_path=request.codebase_path,
     )
+    
+    logger.info(f"Submitted generation task {task.id} for project {project_id}")
 
     return ProjectCreateResponse(
         project_id=project_id,
