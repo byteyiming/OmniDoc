@@ -142,6 +142,7 @@ echo "  ✅ Verifying backend installation..."
 if [ "$USE_UV" = true ]; then
     uv run python -c "
 import sys
+import importlib
 packages = [
     'google.generativeai',
     'fastapi',
@@ -152,13 +153,7 @@ packages = [
 missing = []
 for pkg in packages:
     try:
-        if '.' in pkg:
-            parts = pkg.split('.')
-            mod = __import__(parts[0])
-            for part in parts[1:]:
-                mod = getattr(mod, part)
-        else:
-            __import__(pkg)
+        importlib.import_module(pkg)
         print(f'    ✅ {pkg}')
     except ImportError:
         print(f'    ❌ {pkg}')
@@ -170,6 +165,7 @@ else
     source .venv/bin/activate
     python -c "
 import sys
+import importlib
 packages = [
     'google.generativeai',
     'fastapi',
@@ -180,13 +176,7 @@ packages = [
 missing = []
 for pkg in packages:
     try:
-        if '.' in pkg:
-            parts = pkg.split('.')
-            mod = __import__(parts[0])
-            for part in parts[1:]:
-                mod = getattr(mod, part)
-        else:
-            __import__(pkg)
+        importlib.import_module(pkg)
         print(f'    ✅ {pkg}')
     except ImportError:
         print(f'    ❌ {pkg}')
