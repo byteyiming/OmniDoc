@@ -128,7 +128,16 @@ export const LEVEL_ICONS: Record<DocumentLevel, string> = {
 /**
  * Get document level from document ID or category
  */
-function getDocumentLevel(doc: DocumentTemplate): DocumentLevel {
+export function getDocumentLevel(doc: DocumentTemplate | string): DocumentLevel {
+  // Handle string input (document ID)
+  if (typeof doc === 'string') {
+    if (doc in DOCUMENT_LEVEL_MAP) {
+      return DOCUMENT_LEVEL_MAP[doc];
+    }
+    // Default to cross-level if not found
+    return DocumentLevel.CROSS_LEVEL;
+  }
+  
   // Try direct ID match first
   if (doc.id in DOCUMENT_LEVEL_MAP) {
     return DOCUMENT_LEVEL_MAP[doc.id];
@@ -154,6 +163,114 @@ function getDocumentLevel(doc: DocumentTemplate): DocumentLevel {
   
   // Default to cross-level
   return DocumentLevel.CROSS_LEVEL;
+}
+
+// Document-specific icons (more specific than level icons)
+const DOCUMENT_ICONS: Record<string, string> = {
+  // Strategic Level
+  'requirements': '📋',
+  'requirements_analyst': '📋',
+  'project_charter': '📜',
+  'business_model': '💼',
+  'marketing_plan': '📢',
+  'gtm_strategy': '🎯',
+  'stakeholders_doc': '👥',
+  'stakeholder_communication': '💬',
+  'risk_management_plan': '⚠️',
+  'change_management_plan': '🔄',
+  'feature_roadmap': '🗺️',
+  
+  // Product Level
+  'user_stories': '📖',
+  'prd': '📝',
+  'fsd': '📐',
+  'pm_documentation': '📊',
+  'user_analytics': '📈',
+  'dashboard_metrics': '📉',
+  'kpi_metrics_doc': '🎯',
+  'release_notes': '🚀',
+  'user_feedback_plan': '💭',
+  'ab_testing_docs': '🧪',
+  'onboarding_flow': '🎓',
+  'interaction_flows': '🔄',
+  'ui_mockups': '🎨',
+  'ui_style_guide': '🎨',
+  
+  // Developer Level
+  'technical_documentation': '💻',
+  'tad': '📐',
+  'api_documentation': '🔌',
+  'database_schema': '🗄️',
+  'developer_guide': '👨‍💻',
+  'developer_documentation': '👨‍💻',
+  'setup_guide': '⚙️',
+  'test_plan': '🧪',
+  'test_documentation': '✅',
+  'cicd_doc': '🔄',
+  'api_versioning_policy': '📌',
+  'configuration_management_plan': '⚙️',
+  'deployment_plan': '🚀',
+  'scalability_plan': '📈',
+  'technical_debt_log': '📝',
+  'third_party_integrations': '🔗',
+  'feature_flag_docs': '🚩',
+  
+  // User Level
+  'user_documentation': '📚',
+  'user_support_doc': '🆘',
+  'knowledge_base': '📖',
+  'support_training_doc': '🎓',
+  
+  // Operations Level
+  'backup_recovery_plan': '💾',
+  'maintenance_plan': '🔧',
+  'monitoring_logging_plan': '📊',
+  'performance_optimization_doc': '⚡',
+  'cloud_infrastructure_doc': '☁️',
+  'bcp': '🛡️',
+  'sla': '📋',
+  'vendor_management_docs': '🤝',
+  'incident_response_plan': '🚨',
+  'data_retention_policy': '📦',
+  'data_governance_policy': '📜',
+  'security_plan': '🔒',
+  'privacy_policy': '🔐',
+  'terms_of_service': '📄',
+  'legal_compliance': '⚖️',
+  'accessibility_plan': '♿',
+  'eol_policy': '⏰',
+  'localization_plan': '🌍',
+  'technical_audit': '🔍',
+  
+  // Cross-Level
+  'support_playbook': '📘',
+  'quality_review': '⭐',
+  'document_improver': '✨',
+  'format_converter': '🔄',
+  'code_analyst': '🔬',
+};
+
+/**
+ * Get document icon from document ID
+ * Returns document-specific icon if available, otherwise falls back to level icon
+ */
+export function getDocumentIcon(docId: string): string {
+  // Try document-specific icon first
+  if (docId in DOCUMENT_ICONS) {
+    return DOCUMENT_ICONS[docId];
+  }
+  
+  // Try normalized match (handle variations like requirements_analyst vs requirements)
+  const normalized = docId.toLowerCase().replace(/[_-]/g, '');
+  for (const [key, icon] of Object.entries(DOCUMENT_ICONS)) {
+    if (key.toLowerCase().replace(/[_-]/g, '') === normalized) {
+      return icon;
+    }
+  }
+  
+  // Fall back to level icon
+  const level = getDocumentLevel(docId);
+  return LEVEL_ICONS[level];
 }
 
 /**

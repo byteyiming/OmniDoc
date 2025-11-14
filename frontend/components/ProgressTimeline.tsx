@@ -1,5 +1,7 @@
 'use client';
 
+import { getDocumentIcon } from '@/lib/documentRanking';
+
 interface ProgressEvent {
   type: string;
   project_id?: string;
@@ -21,15 +23,19 @@ export default function ProgressTimeline({
   events,
   total,
 }: ProgressTimelineProps) {
-  const getEventIcon = (type: string) => {
-    switch (type) {
+  const getEventIcon = (event: ProgressEvent) => {
+    // For document_completed events, use the document's level icon
+    if (event.type === 'document_completed' && event.document_id) {
+      return getDocumentIcon(event.document_id);
+    }
+    
+    // For other event types, use default icons
+    switch (event.type) {
       case 'start':
       case 'plan':
         return '🚀';
       case 'document_started':
         return '⏳';
-      case 'document_completed':
-        return '✅';
       case 'complete':
         return '🎉';
       case 'error':
@@ -105,11 +111,13 @@ export default function ProgressTimeline({
             <div key={index} className="relative flex items-start space-x-4">
               {/* Icon */}
               <div
-                className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full ${getEventColor(
-                  event.type
-                )} text-white`}
+                className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full ${
+                  event.type === 'document_completed' 
+                    ? 'bg-green-500' 
+                    : getEventColor(event.type)
+                } text-white`}
               >
-                <span className="text-sm">{getEventIcon(event.type)}</span>
+                <span className="text-sm">{getEventIcon(event)}</span>
               </div>
 
               {/* Content */}

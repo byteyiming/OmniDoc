@@ -13,6 +13,7 @@ export default function ProjectResultsPage() {
   const [documents, setDocuments] = useState<GeneratedDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
 
   useEffect(() => {
     async function loadDocuments() {
@@ -34,6 +35,36 @@ export default function ProjectResultsPage() {
 
     loadDocuments();
   }, [projectId]);
+
+  const handleShare = async () => {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        // Use native share API if available
+        await navigator.share({
+          title: 'OmniDoc Generated Documents',
+          text: 'Check out these generated project documents',
+          url: url,
+        });
+      } else {
+        // Fallback to clipboard
+        await navigator.clipboard.writeText(url);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      }
+    } catch (err) {
+      // User cancelled share or clipboard failed - try fallback
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      } catch (clipboardErr) {
+        console.error('Failed to copy to clipboard:', clipboardErr);
+        // Show error message
+        alert('Failed to copy link. Please copy the URL manually: ' + url);
+      }
+    }
+  };
 
   if (loading) {
     return (
@@ -61,7 +92,7 @@ export default function ProjectResultsPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-gray-50">
+    <div className="flex min-h-full flex-col bg-gray-50">
       {/* Header */}
       <div className="border-b border-gray-200 bg-white px-6 py-4">
         <div className="flex items-center justify-between">
@@ -74,6 +105,13 @@ export default function ProjectResultsPage() {
             </p>
           </div>
           <div className="flex space-x-3">
+            <button
+              onClick={handleShare}
+              className="flex items-center space-x-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+            >
+              <span>{shareCopied ? '✓' : '🔗'}</span>
+              <span>{shareCopied ? 'Copied!' : 'Share'}</span>
+            </button>
             <button
               onClick={() => router.push(`/project/${projectId}`)}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
