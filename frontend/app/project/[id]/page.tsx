@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import ProgressTimeline from '@/components/ProgressTimeline';
+import GeneratingAnimation from '@/components/GeneratingAnimation';
 import { useProjectStatus } from '@/lib/useProjectStatus';
 import { getWebSocketUrl } from '@/lib/api';
 
@@ -210,10 +211,27 @@ export default function ProjectStatusPage() {
               <div className="text-gray-500">Loading project status...</div>
             </div>
           ) : (
-            <ProgressTimeline
-              events={events}
-              total={status?.selected_documents.length}
-            />
+            <>
+              {/* Show timeline if there are events */}
+              {events.length > 0 ? (
+                <>
+                  <ProgressTimeline
+                    events={events}
+                    total={status?.selected_documents.length}
+                  />
+                  {/* Show generating animation below timeline if still in progress */}
+                  {status?.status === 'in_progress' && 
+                   !events.some(e => e.type === 'complete') && (
+                    <div className="mt-6 border-t border-gray-200 pt-6">
+                      <GeneratingAnimation />
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Show generating animation if in progress but no events yet */
+                status?.status === 'in_progress' && <GeneratingAnimation />
+              )}
+            </>
           )}
         </div>
 
