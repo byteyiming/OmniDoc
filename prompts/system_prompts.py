@@ -1680,7 +1680,8 @@ def get_structured_quality_feedback_prompt(document_content: str, document_type:
         score_context += f"- Section Completeness: {sections_data.get('completeness_score', 0):.1f}% ({sections_data.get('found_count', 0)}/{sections_data.get('required_count', 0)} sections)\n"
         if sections_data.get('missing_sections'):
             missing = sections_data.get('missing_sections', [])[:5]
-            score_context += f"- Missing Sections: {', '.join([s.replace('^#+\\\\s+', '').replace('\\\\s+', ' ') for s in missing])}\n"
+            cleaned_missing = [s.replace('^#+\\s+', '').replace('\\s+', ' ') for s in missing]
+            score_context += f"- Missing Sections: {', '.join(cleaned_missing)}\n"
         score_context += f"- Readability: {readability_data.get('readability_score', 0):.1f} ({readability_data.get('level', 'unknown')})\n"
         
         prompt += score_context
