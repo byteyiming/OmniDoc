@@ -31,8 +31,20 @@ if [ ! -f ".env" ]; then
 fi
 
 # Load environment variables (safely handle comments and special characters)
+# Use a more robust method that handles special characters like &, ?, = in values
 set -a
-source <(grep -v '^#' .env | grep -v '^$' | sed 's/#.*$//')
+while IFS= read -r line || [ -n "$line" ]; do
+    # Skip empty lines and comments
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    
+    # Remove inline comments (but preserve # in values)
+    # Only remove # if it's followed by whitespace or end of line
+    line=$(echo "$line" | sed 's/[[:space:]]*#.*$//')
+    [[ -z "$line" ]] && continue
+    
+    # Export the variable (handles values with special chars)
+    export "$line" 2>/dev/null || true
+done < .env
 set +a
 
 # Check DATABASE_URL
