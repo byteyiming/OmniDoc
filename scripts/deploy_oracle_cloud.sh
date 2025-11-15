@@ -68,17 +68,104 @@ echo -e "${GREEN}Step 7: Running setup script...${NC}"
 
 echo -e "${GREEN}Step 8: Configuring environment...${NC}"
 if [ ! -f .env ]; then
-    echo -e "${YELLOW}Please create .env file with production settings.${NC}"
-    echo "Example:"
-    echo "DATABASE_URL=postgresql://omnidoc:$DB_PASSWORD@localhost:5432/omnidoc"
-    echo "REDIS_URL=redis://:$REDIS_PASSWORD@localhost:6379/0"
-    echo "JWT_SECRET_KEY=$(openssl rand -hex 32)"
-    echo "ENVIRONMENT=prod"
-    read -p "Press Enter after creating .env file..."
+    echo -e "${YELLOW}Creating .env file with production settings...${NC}"
+    cat > .env <<EOF
+# Database
+DATABASE_URL=postgresql://omnidoc:$DB_PASSWORD@localhost:5432/omnidoc
+
+# Redis
+REDIS_URL=redis://:$REDIS_PASSWORD@localhost:6379/0
+
+# Security
+JWT_SECRET_KEY=$(openssl rand -hex 32)
+ENVIRONMENT=prod
+
+# CORS - Production domain
+ALLOWED_ORIGINS=https://omnidoc.info,https://www.omnidoc.info
+
+# LLM Provider (update with your API key)
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Backend
+BACKEND_HOST=0.0.0.0
+BACKEND_PORT=8000
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FORMAT=json
+EOF
+    echo -e "${GREEN}.env file created. Please update GEMINI_API_KEY with your actual API key.${NC}"
+    read -p "Press Enter to continue..."
 fi
 
 echo -e "${GREEN}Step 9: Installing Nginx...${NC}"
 sudo apt-get install -y nginx
+
+echo -e "${GREEN}Step 9.1: Configuring Nginx...${NC}"
+sudo tee /etc/nginx/sites-available/omnidoc > /dev/null <<EOF
+# Frontend (Next.js)
+server {
+    listen 80;
+    server_name omnidoc.info www.omnidoc.info;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+
+# Backend API (FastAPI)
+server {
+    listen 80;
+    server_name api.omnidoc.info;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # WebSocket support
+    location /ws {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+}
+EOF
+
+sudo ln -sf /etc/nginx/sites-available/omnidoc /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl restart nginx
+sudo systemctl enable nginx
+
+echo -e "${GREEN}Step 9.2: Setting up SSL with Let's Encrypt...${NC}"
+sudo apt-get install -y certbot python3-certbot-nginx
+echo -e "${YELLOW}Setting up SSL certificates for omnidoc.info...${NC}"
+echo "This will prompt you for email and agreement. Press Enter to continue..."
+read -p "Press Enter to start SSL setup..."
+sudo certbot --nginx -d omnidoc.info -d www.omnidoc.info -d api.omnidoc.info --non-interactive --agree-tos --email admin@omnidoc.info --redirect
+
+echo -e "${GREEN}SSL certificates configured!${NC}"
 
 echo -e "${GREEN}Step 10: Creating systemd services...${NC}"
 
@@ -135,7 +222,14 @@ sudo systemctl enable omnidoc-backend omnidoc-celery
 sudo systemctl start omnidoc-backend omnidoc-celery
 
 # Build frontend
+echo -e "${GREEN}Step 13.1: Building frontend...${NC}"
 cd $APP_DIR/frontend
+
+# Create frontend .env.local with production API URL
+cat > .env.local <<EOF
+NEXT_PUBLIC_API_BASE=https://api.omnidoc.info
+EOF
+
 npm run build
 pm2 start npm --name "omnidoc-frontend" -- start
 pm2 save
@@ -143,14 +237,27 @@ pm2 startup
 
 echo -e "${GREEN}✅ Deployment complete!${NC}"
 echo ""
-echo "Next steps:"
-echo "1. Configure Nginx (see ORACLE_CLOUD_DEPLOYMENT.md)"
-echo "2. Setup SSL with Let's Encrypt"
-echo "3. Update ALLOWED_ORIGINS in .env with your domain"
-echo "4. Configure Oracle Cloud security rules"
+echo -e "${GREEN}Production URLs:${NC}"
+echo "  Frontend: https://omnidoc.info"
+echo "  API: https://api.omnidoc.info"
+echo "  API Docs: https://api.omnidoc.info/docs"
+echo ""
+echo -e "${YELLOW}Important:${NC}"
+echo "1. Update GEMINI_API_KEY in .env file with your actual API key"
+echo "2. Configure Oracle Cloud security rules to allow HTTP/HTTPS traffic"
+echo "3. Ensure DNS records point to this server:"
+echo "   - A record: omnidoc.info → $(curl -s ifconfig.me)"
+echo "   - A record: www.omnidoc.info → $(curl -s ifconfig.me)"
+echo "   - A record: api.omnidoc.info → $(curl -s ifconfig.me)"
 echo ""
 echo "Check service status:"
 echo "  sudo systemctl status omnidoc-backend"
 echo "  sudo systemctl status omnidoc-celery"
+echo "  sudo systemctl status nginx"
 echo "  pm2 status"
+echo ""
+echo "View logs:"
+echo "  sudo journalctl -u omnidoc-backend -f"
+echo "  sudo journalctl -u omnidoc-celery -f"
+echo "  pm2 logs omnidoc-frontend"
 
