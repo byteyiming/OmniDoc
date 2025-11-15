@@ -2,7 +2,7 @@
 Quality Reviewer Agent
 Reviews and improves all generated documentation
 """
-from typing import Optional, Dict, List
+from typing import Optional, Dict
 from datetime import datetime
 from src.agents.base_agent import BaseAgent
 from src.utils.file_manager import FileManager
@@ -108,6 +108,17 @@ class QualityReviewerAgent(BaseAgent):
                 scores_summary += f"- Readability Score: {readability_data.get('readability_score', 0):.1f} ({readability_data.get('level', 'unknown')}, passed: {readability_data.get('passed', False)})\n"
                 if sections_data.get('missing_sections'):
                     scores_summary += f"- Missing Sections: {', '.join([s.replace('^#+\\\\s+', '').replace('\\\\s+', ' ') for s in sections_data.get('missing_sections', [])[:3]])}\n"
+                
+                # Add auto_fail violations if present
+                auto_fail = score_data.get('auto_fail', {})
+                if auto_fail and not auto_fail.get('auto_fail_passed', True):
+                    violations = auto_fail.get('auto_fail_violations', [])
+                    scores_summary += f"- ⚠️ AUTO-FAIL VIOLATIONS: {', '.join(violations)}\n"
+                
+                # Add LLM focus questions if available
+                llm_focus = score_data.get('llm_focus', [])
+                if llm_focus:
+                    scores_summary += f"- Focus Questions: {', '.join(llm_focus)}\n"
             
             full_prompt += scores_summary + "\n\nConsider these automated scores in your review. Focus on improving documents with low scores."
         
@@ -193,11 +204,15 @@ class QualityReviewerAgent(BaseAgent):
                 "priority_improvements": List[Dict]
             }
         """
-        # Get structured feedback prompt
+        # Get LLM focus questions from automated_scores if available
+        llm_focus = automated_scores.get("llm_focus", []) if automated_scores else []
+        
+        # Get structured feedback prompt (with llm_focus if available)
         prompt = get_structured_quality_feedback_prompt(
             document_content=document_content,
             document_type=document_type,
-            automated_scores=automated_scores
+            automated_scores=automated_scores,
+            llm_focus_questions=llm_focus
         )
         
         try:

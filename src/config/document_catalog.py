@@ -13,6 +13,7 @@ from fastapi import HTTPException
 
 DOCUMENT_CONFIG_ENV = "DOCUMENT_CONFIG_PATH"
 DEFAULT_CATALOG_PATH = Path("config/document_definitions.json")
+QUALITY_RULES_PATH = Path("src/config/quality_rules.json")
 
 
 @dataclass(frozen=True)
@@ -97,10 +98,118 @@ def get_document_by_id(document_id: str) -> Optional[DocumentDefinition]:
 def reload_catalog() -> None:
     """Clear the cached definitions (useful for tests or when the file changes)."""
     load_document_definitions.cache_clear()  # type: ignore[attr-defined]
+    _load_quality_rules_dependencies.cache_clear()  # type: ignore[attr-defined]
+
+
+@lru_cache(maxsize=1)
+def _load_quality_rules_dependencies() -> Dict[str, List[str]]:
+    """
+    Load dependencies from quality_rules.json and map document names to document IDs.
+    
+    Returns:
+        Dict mapping document ID to list of dependency document IDs
+    """
+    dependencies_map: Dict[str, List[str]] = {}
+    
+    # Load quality rules
+    if not QUALITY_RULES_PATH.exists():
+        return dependencies_map
+    
+    try:
+        with open(QUALITY_RULES_PATH, 'r', encoding='utf-8') as f:
+            quality_rules = json.load(f)
+    except Exception:
+        return dependencies_map
+    
+    # Load document definitions to create name -> id mapping
+    definitions = load_document_definitions()
+    name_to_id: Dict[str, str] = {}
+    for doc_id, definition in definitions.items():
+        name_to_id[definition.name] = doc_id
+        # Also map normalized names (lowercase, no special chars)
+        normalized_name = definition.name.lower().replace('(', '').replace(')', '').strip()
+        name_to_id[normalized_name] = doc_id
+    
+    # Process quality rules
+    for rule_name, rules in quality_rules.items():
+        if "dependencies" not in rules:
+            continue
+        
+        # Find document ID for this rule name
+        doc_id = None
+        # Try exact match first
+        if rule_name in name_to_id:
+            doc_id = name_to_id[rule_name]
+        else:
+            # Try normalized match
+            normalized_rule = rule_name.lower().replace('(', '').replace(')', '').strip()
+            if normalized_rule in name_to_id:
+                doc_id = name_to_id[normalized_rule]
+            else:
+                # Try fuzzy match by checking all document names
+                for doc_name, doc_id_candidate in name_to_id.items():
+                    if rule_name.lower() in doc_name.lower() or doc_name.lower() in rule_name.lower():
+                        doc_id = doc_id_candidate
+                        break
+        
+        if not doc_id:
+            continue
+        
+        # Map dependency names to IDs
+        dep_ids: List[str] = []
+        for dep_name in rules.get("dependencies", []):
+            # Try exact match
+            if dep_name in name_to_id:
+                dep_ids.append(name_to_id[dep_name])
+            else:
+                # Try normalized match
+                normalized_dep = dep_name.lower().replace('(', '').replace(')', '').strip()
+                if normalized_dep in name_to_id:
+                    dep_ids.append(name_to_id[normalized_dep])
+                else:
+                    # Try fuzzy match
+                    for doc_name, dep_id_candidate in name_to_id.items():
+                        if dep_name.lower() in doc_name.lower() or doc_name.lower() in dep_name.lower():
+                            dep_ids.append(dep_id_candidate)
+                            break
+        
+        if dep_ids:
+            dependencies_map[doc_id] = dep_ids
+    
+    return dependencies_map
+
+
+def get_all_dependencies(doc_id: str) -> List[str]:
+    """
+    Get all dependencies for a document ID, combining dependencies from:
+    1. document_definitions.json
+    2. quality_rules.json
+    
+    Returns:
+        List of unique dependency document IDs
+    """
+    definitions = load_document_definitions()
+    definition = definitions.get(doc_id)
+    
+    # Start with dependencies from document_definitions.json
+    deps_from_definitions: List[str] = []
+    if definition:
+        deps_from_definitions = list(definition.dependencies)
+    
+    # Add dependencies from quality_rules.json
+    quality_deps = _load_quality_rules_dependencies().get(doc_id, [])
+    
+    # Combine and deduplicate
+    all_deps = list(dict.fromkeys(deps_from_definitions + quality_deps))
+    
+    return all_deps
 
 
 def resolve_dependencies(selected_ids: Iterable[str]) -> List[str]:
-    """Resolve dependencies for the given document IDs with topological ordering."""
+    """
+    Resolve dependencies for the given document IDs with topological ordering.
+    Combines dependencies from both document_definitions.json and quality_rules.json.
+    """
     definitions = load_document_definitions()
     order: List[str] = []
     visiting: Set[str] = set()
@@ -116,7 +225,8 @@ def resolve_dependencies(selected_ids: Iterable[str]) -> List[str]:
             raise ValueError(f"Unknown document id '{doc_id}'")
 
         visiting.add(doc_id)
-        for dep_id in definition.dependencies:
+        # Use get_all_dependencies to get combined dependencies
+        for dep_id in get_all_dependencies(doc_id):
             visit(dep_id)
         visiting.remove(doc_id)
         visited.add(doc_id)

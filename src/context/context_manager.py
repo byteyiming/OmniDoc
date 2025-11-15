@@ -8,8 +8,10 @@ import threading
 from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime
+from contextlib import contextmanager
 
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
 from src.context.shared_context import (
@@ -25,127 +27,185 @@ from src.context.shared_context import (
 class ContextManager:
     """Manages shared context in PostgreSQL database"""
     
-    def __init__(self, db_url: Optional[str] = None):
+    def __init__(self, db_url: Optional[str] = None, min_conn: int = 1, max_conn: int = 10):
         """
-        Initialize context manager
+        Initialize context manager with connection pooling
         
         Args:
             db_url: PostgreSQL connection URL (e.g., postgresql://user:password@localhost/dbname)
                    If None, reads from DATABASE_URL environment variable
+            min_conn: Minimum number of connections in pool
+            max_conn: Maximum number of connections in pool
         """
         if db_url is None:
             db_url = os.getenv("DATABASE_URL", "postgresql://localhost/omnidoc")
         
         self.db_url = db_url
-        self.connection: Optional[psycopg2.extensions.connection] = None
-        self._lock = threading.Lock()  # Thread lock for database operations
+        self._lock = threading.Lock()
+        
+        # Parse connection URL for pool
+        try:
+            # Create connection pool
+            self._connection_pool: Optional[pool.ThreadedConnectionPool] = pool.ThreadedConnectionPool(
+                min_conn,
+                max_conn,
+                db_url
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to create connection pool: {e}")
+            # Fallback to single connection
+            self._connection_pool = None
+        
         self._initialize_database()
     
     def _get_connection(self):
-        """Get a database connection"""
-        if self.connection is None or self.connection.closed:
-            self.connection = psycopg2.connect(self.db_url)
-        return self.connection
+        """Get a database connection from pool"""
+        if self._connection_pool is None:
+            # Fallback to direct connection if pool failed
+            return psycopg2.connect(self.db_url)
+        
+        try:
+            return self._connection_pool.getconn()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to get connection from pool: {e}, using direct connection")
+            return psycopg2.connect(self.db_url)
+    
+    def _put_connection(self, conn):
+        """Return a connection to the pool"""
+        if self._connection_pool is not None:
+            try:
+                self._connection_pool.putconn(conn)
+            except Exception:
+                # If pool is full or connection is bad, close it
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+    
+    @contextmanager
+    def _get_cursor(self):
+        """Context manager for database cursor"""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            yield cursor
+            conn.commit()
+        except Exception:
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                cursor.close()
+                self._put_connection(conn)
     
     def _initialize_database(self):
         """Create database tables if they don't exist"""
-        self.connection = self._get_connection()
-        cursor = self.connection.cursor()
-        
-        # Projects table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS projects (
-                project_id VARCHAR(255) PRIMARY KEY,
-                user_idea TEXT NOT NULL,
-                created_at TIMESTAMP NOT NULL,
-                updated_at TIMESTAMP NOT NULL
-            )
-        """)
-        
-        # Requirements table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS requirements (
-                project_id VARCHAR(255) PRIMARY KEY,
-                user_idea TEXT NOT NULL,
-                project_overview TEXT,
-                core_features TEXT,  -- JSON array
-                technical_requirements TEXT,  -- JSON object
-                user_personas TEXT,  -- JSON array
-                business_objectives TEXT,  -- JSON array
-                constraints TEXT,  -- JSON array
-                assumptions TEXT,  -- JSON array
-                generated_at TIMESTAMP NOT NULL,
-                FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
-            )
-        """)
-        
-        # Agent outputs table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS agent_outputs (
-                output_id VARCHAR(255) PRIMARY KEY,
-                project_id VARCHAR(255) NOT NULL,
-                agent_type VARCHAR(100) NOT NULL,
-                document_type VARCHAR(255) NOT NULL,
-                content TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                quality_score REAL,
-                status VARCHAR(50) NOT NULL,
-                dependencies TEXT,  -- JSON array
-                generated_at TIMESTAMP,
-                version INTEGER DEFAULT 1,  -- Document version (1, 2, 3, etc.)
-                approved INTEGER DEFAULT 0,  -- 0 = pending, 1 = approved, 2 = rejected
-                approved_at TIMESTAMP,  -- Timestamp when approved
-                approval_notes TEXT,  -- User notes during approval
-                FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
-            )
-        """)
-        
-        # Cross-references table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS cross_references (
-                ref_id VARCHAR(255) PRIMARY KEY,
-                project_id VARCHAR(255) NOT NULL,
-                from_document VARCHAR(255) NOT NULL,
-                to_document VARCHAR(255) NOT NULL,
-                reference_type VARCHAR(100) NOT NULL,
-                description TEXT,
-                FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
-            )
-        """)
-        
-        # Project status table for workflow state management
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS project_status (
-                project_id VARCHAR(255) PRIMARY KEY,
-                status VARCHAR(50) NOT NULL,
-                user_idea TEXT NOT NULL,
-                profile VARCHAR(50),
-                provider_name VARCHAR(100),
-                started_at TIMESTAMP NOT NULL,
-                completed_at TIMESTAMP,
-                failed_at TIMESTAMP,
-                error TEXT,
-                completed_agents TEXT,  -- JSON array
-                results TEXT,  -- JSON object (serialized results)
-                phase1_approved INTEGER DEFAULT 0,  -- 0 = pending, 1 = approved, 2 = rejected
-                phase1_approved_at TIMESTAMP,  -- Timestamp when Phase 1 was approved
-                phase1_approval_notes TEXT,  -- User notes/comments during approval
-                selected_documents TEXT,
-                FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
-            )
-        """)
-        
-        # Check if selected_documents column exists (PostgreSQL way)
-        cursor.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name='project_status' AND column_name='selected_documents'
-        """)
-        if cursor.fetchone() is None:
-            cursor.execute("ALTER TABLE project_status ADD COLUMN selected_documents TEXT")
-
-        self.connection.commit()
-        cursor.close()
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # Projects table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    project_id VARCHAR(255) PRIMARY KEY,
+                    user_idea TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL,
+                    updated_at TIMESTAMP NOT NULL
+                )
+            """)
+            
+            # Requirements table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS requirements (
+                    project_id VARCHAR(255) PRIMARY KEY,
+                    user_idea TEXT NOT NULL,
+                    project_overview TEXT,
+                    core_features TEXT,  -- JSON array
+                    technical_requirements TEXT,  -- JSON object
+                    user_personas TEXT,  -- JSON array
+                    business_objectives TEXT,  -- JSON array
+                    constraints TEXT,  -- JSON array
+                    assumptions TEXT,  -- JSON array
+                    generated_at TIMESTAMP NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+                )
+            """)
+            
+            # Agent outputs table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS agent_outputs (
+                    output_id VARCHAR(255) PRIMARY KEY,
+                    project_id VARCHAR(255) NOT NULL,
+                    agent_type VARCHAR(100) NOT NULL,
+                    document_type VARCHAR(255) NOT NULL,
+                    content TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    quality_score REAL,
+                    status VARCHAR(50) NOT NULL,
+                    dependencies TEXT,  -- JSON array
+                    generated_at TIMESTAMP,
+                    version INTEGER DEFAULT 1,  -- Document version (1, 2, 3, etc.)
+                    approved INTEGER DEFAULT 0,  -- 0 = pending, 1 = approved, 2 = rejected
+                    approved_at TIMESTAMP,  -- Timestamp when approved
+                    approval_notes TEXT,  -- User notes during approval
+                    FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+                )
+            """)
+            
+            # Cross-references table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS cross_references (
+                    ref_id VARCHAR(255) PRIMARY KEY,
+                    project_id VARCHAR(255) NOT NULL,
+                    from_document VARCHAR(255) NOT NULL,
+                    to_document VARCHAR(255) NOT NULL,
+                    reference_type VARCHAR(100) NOT NULL,
+                    description TEXT,
+                    FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+                )
+            """)
+            
+            # Project status table for workflow state management
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS project_status (
+                    project_id VARCHAR(255) PRIMARY KEY,
+                    status VARCHAR(50) NOT NULL,
+                    user_idea TEXT NOT NULL,
+                    profile VARCHAR(50),
+                    provider_name VARCHAR(100),
+                    started_at TIMESTAMP NOT NULL,
+                    completed_at TIMESTAMP,
+                    failed_at TIMESTAMP,
+                    error TEXT,
+                    completed_agents TEXT,  -- JSON array
+                    results TEXT,  -- JSON object (serialized results)
+                    phase1_approved INTEGER DEFAULT 0,  -- 0 = pending, 1 = approved, 2 = rejected
+                    phase1_approved_at TIMESTAMP,  -- Timestamp when Phase 1 was approved
+                    phase1_approval_notes TEXT,  -- User notes/comments during approval
+                    selected_documents TEXT,
+                    FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+                )
+            """)
+            
+            # Check if selected_documents column exists (PostgreSQL way)
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name='project_status' AND column_name='selected_documents'
+            """)
+            if cursor.fetchone() is None:
+                cursor.execute("ALTER TABLE project_status ADD COLUMN selected_documents TEXT")
+            
+            conn.commit()
+            cursor.close()
+        finally:
+            self._put_connection(conn)
     
     def create_project(self, project_id: str, user_idea: str) -> str:
         """
@@ -158,60 +218,50 @@ class ContextManager:
         Returns:
             project_id
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
         now = datetime.now()
-        
-        cursor.execute("""
-            INSERT INTO projects (project_id, user_idea, created_at, updated_at)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (project_id) DO UPDATE SET
-                user_idea = EXCLUDED.user_idea,
-                updated_at = EXCLUDED.updated_at
-        """, (project_id, user_idea, now, now))
-        
-        conn.commit()
-        cursor.close()
+        with self._get_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO projects (project_id, user_idea, created_at, updated_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (project_id) DO UPDATE SET
+                    user_idea = EXCLUDED.user_idea,
+                    updated_at = EXCLUDED.updated_at
+            """, (project_id, user_idea, now, now))
         return project_id
     
     def save_requirements(self, project_id: str, requirements: RequirementsDocument):
         """Save requirements document (thread-safe)"""
         with self._lock:
             try:
-                conn = self._get_connection()
-                cursor = conn.cursor()
-                
-                cursor.execute("""
-                    INSERT INTO requirements (
-                        project_id, user_idea, project_overview, core_features,
-                        technical_requirements, user_personas, business_objectives,
-                        constraints, assumptions, generated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (project_id) DO UPDATE SET
-                        user_idea = EXCLUDED.user_idea,
-                        project_overview = EXCLUDED.project_overview,
-                        core_features = EXCLUDED.core_features,
-                        technical_requirements = EXCLUDED.technical_requirements,
-                        user_personas = EXCLUDED.user_personas,
-                        business_objectives = EXCLUDED.business_objectives,
-                        constraints = EXCLUDED.constraints,
-                        assumptions = EXCLUDED.assumptions,
-                        generated_at = EXCLUDED.generated_at
-                """, (
-                    project_id,
-                    requirements.user_idea,
-                    requirements.project_overview,
-                    json.dumps(requirements.core_features),
-                    json.dumps(requirements.technical_requirements),
-                    json.dumps(requirements.user_personas),
-                    json.dumps(requirements.business_objectives),
-                    json.dumps(requirements.constraints),
-                    json.dumps(requirements.assumptions),
-                    requirements.generated_at
-                ))
-                
-                conn.commit()
-                cursor.close()
+                with self._get_cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO requirements (
+                            project_id, user_idea, project_overview, core_features,
+                            technical_requirements, user_personas, business_objectives,
+                            constraints, assumptions, generated_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (project_id) DO UPDATE SET
+                            user_idea = EXCLUDED.user_idea,
+                            project_overview = EXCLUDED.project_overview,
+                            core_features = EXCLUDED.core_features,
+                            technical_requirements = EXCLUDED.technical_requirements,
+                            user_personas = EXCLUDED.user_personas,
+                            business_objectives = EXCLUDED.business_objectives,
+                            constraints = EXCLUDED.constraints,
+                            assumptions = EXCLUDED.assumptions,
+                            generated_at = EXCLUDED.generated_at
+                    """, (
+                        project_id,
+                        requirements.user_idea,
+                        requirements.project_overview,
+                        json.dumps(requirements.core_features),
+                        json.dumps(requirements.technical_requirements),
+                        json.dumps(requirements.user_personas),
+                        json.dumps(requirements.business_objectives),
+                        json.dumps(requirements.constraints),
+                        json.dumps(requirements.assumptions),
+                        requirements.generated_at
+                    ))
             except Exception as e:
                 import logging
                 logger = logging.getLogger(__name__)
@@ -221,29 +271,32 @@ class ContextManager:
     def get_requirements(self, project_id: str) -> Optional[RequirementsDocument]:
         """Get requirements for a project"""
         conn = self._get_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT * FROM requirements WHERE project_id = %s", (project_id,))
-        row = cursor.fetchone()
-        cursor.close()
-        
-        if not row:
-            return None
-        
-        generated_at = row["generated_at"]
-        if isinstance(generated_at, str):
-            generated_at = datetime.fromisoformat(generated_at)
-        
-        return RequirementsDocument(
-            user_idea=row["user_idea"],
-            project_overview=row["project_overview"] or "",
-            core_features=json.loads(row["core_features"] or "[]"),
-            technical_requirements=json.loads(row["technical_requirements"] or "{}"),
-            user_personas=json.loads(row["user_personas"] or "[]"),
-            business_objectives=json.loads(row["business_objectives"] or "[]"),
-            constraints=json.loads(row["constraints"] or "[]"),
-            assumptions=json.loads(row["assumptions"] or "[]"),
-            generated_at=generated_at
-        )
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("SELECT * FROM requirements WHERE project_id = %s", (project_id,))
+            row = cursor.fetchone()
+            cursor.close()
+            
+            if not row:
+                return None
+            
+            generated_at = row["generated_at"]
+            if isinstance(generated_at, str):
+                generated_at = datetime.fromisoformat(generated_at)
+            
+            return RequirementsDocument(
+                user_idea=row["user_idea"],
+                project_overview=row["project_overview"] or "",
+                core_features=json.loads(row["core_features"] or "[]"),
+                technical_requirements=json.loads(row["technical_requirements"] or "{}"),
+                user_personas=json.loads(row["user_personas"] or "[]"),
+                business_objectives=json.loads(row["business_objectives"] or "[]"),
+                constraints=json.loads(row["constraints"] or "[]"),
+                assumptions=json.loads(row["assumptions"] or "[]"),
+                generated_at=generated_at
+            )
+        finally:
+            self._put_connection(conn)
     
     def save_agent_output(self, project_id: str, output: AgentOutput, version: Optional[int] = None):
         """
