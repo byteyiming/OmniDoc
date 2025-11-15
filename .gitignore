@@ -84,6 +84,7 @@ Thumbs.db
 !CODE_IMPROVEMENTS.md
 !DEPLOYMENT.md
 !DOMAIN_ARCHITECTURE.md
+!HOSTINGER_DNS_SETUP.md
 
 # Documentation files in docs/ (allow QUALITY_SCORING.md)
 docs/*.md

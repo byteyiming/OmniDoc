@@ -30,8 +30,10 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
-# Load environment variables
-export $(grep -v '^#' .env | xargs)
+# Load environment variables (safely handle comments and special characters)
+set -a
+source <(grep -v '^#' .env | grep -v '^$' | sed 's/#.*$//')
+set +a
 
 # Check DATABASE_URL
 if [ -z "$DATABASE_URL" ]; then
