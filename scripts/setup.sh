@@ -149,6 +149,9 @@ packages = [
     'uvicorn',
     'psycopg2',
     'pydantic',
+    'slowapi',  # Rate limiting
+    'celery',  # Task queue
+    'redis',  # Redis client
 ]
 missing = []
 for pkg in packages:
@@ -172,6 +175,9 @@ packages = [
     'uvicorn',
     'psycopg2',
     'pydantic',
+    'slowapi',  # Rate limiting
+    'celery',  # Task queue
+    'redis',  # Redis client
 ]
 missing = []
 for pkg in packages:

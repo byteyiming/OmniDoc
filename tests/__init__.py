@@ -1,2 +1,1 @@
-"""Test suite for DOCU-GEN"""
-
+"""Test suite for OmniDoc"""
