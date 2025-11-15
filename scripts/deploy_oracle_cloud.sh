@@ -98,7 +98,7 @@ ENVIRONMENT=prod
 # =============================================================================
 # CORS Configuration - Production Domain
 # =============================================================================
-ALLOWED_ORIGINS=https://omnidoc.info,https://www.omnidoc.info
+ALLOWED_ORIGINS=https://omnidoc.info,https://www.omnidoc.info,https://*.vercel.app
 
 # =============================================================================
 # LLM Provider Configuration
@@ -143,26 +143,10 @@ echo -e "${GREEN}Step 10: Installing Nginx...${NC}"
 sudo apt-get install -y nginx
 
 echo -e "${GREEN}Step 10.1: Configuring Nginx...${NC}"
+echo -e "${YELLOW}Note: Frontend is deployed on Vercel, only backend API is configured here.${NC}"
 sudo tee /etc/nginx/sites-available/omnidoc > /dev/null <<EOF
-# Frontend (Next.js)
-server {
-    listen 80;
-    server_name omnidoc.info www.omnidoc.info;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-
 # Backend API (FastAPI)
+# Frontend is deployed on Vercel at https://omnidoc.info
 server {
     listen 80;
     server_name api.omnidoc.info;
@@ -200,11 +184,12 @@ sudo systemctl enable nginx
 
 echo -e "${GREEN}Step 10.2: Setting up SSL with Let's Encrypt...${NC}"
 sudo apt-get install -y certbot python3-certbot-nginx
-echo -e "${YELLOW}Setting up SSL certificates for omnidoc.info...${NC}"
+echo -e "${YELLOW}Setting up SSL certificates for API endpoint...${NC}"
+echo -e "${YELLOW}Note: Frontend SSL is handled by Vercel.${NC}"
 read -p "Enter your email for Let's Encrypt notifications: " CERTBOT_EMAIL
 CERTBOT_EMAIL=${CERTBOT_EMAIL:-"admin@omnidoc.info"}
-echo -e "${GREEN}Obtaining SSL certificates...${NC}"
-sudo certbot --nginx -d omnidoc.info -d www.omnidoc.info -d api.omnidoc.info --non-interactive --agree-tos --email $CERTBOT_EMAIL --redirect
+echo -e "${GREEN}Obtaining SSL certificates for API...${NC}"
+sudo certbot --nginx -d api.omnidoc.info --non-interactive --agree-tos --email $CERTBOT_EMAIL --redirect
 
 echo -e "${GREEN}SSL certificates configured!${NC}"
 echo -e "${GREEN}Auto-renewal is configured automatically.${NC}"
@@ -249,57 +234,51 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-echo -e "${GREEN}Step 12: Setting up PM2 for frontend...${NC}"
-sudo npm install -g pm2
-
-echo -e "${GREEN}Step 13: Configuring firewall...${NC}"
+echo -e "${GREEN}Step 12: Configuring firewall...${NC}"
+echo -e "${YELLOW}Note: Frontend is deployed on Vercel, skipping PM2 setup.${NC}"
 sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw --force enable
 
-echo -e "${GREEN}Step 14: Enabling services...${NC}"
+echo -e "${GREEN}Step 13: Enabling services...${NC}"
 sudo systemctl daemon-reload
 sudo systemctl enable omnidoc-backend omnidoc-celery
 sudo systemctl start omnidoc-backend omnidoc-celery
 
-# Build frontend
-echo -e "${GREEN}Step 14.1: Building frontend...${NC}"
-cd $APP_DIR/frontend
+echo -e "${GREEN}Step 14: Frontend deployment reminder...${NC}"
+echo -e "${YELLOW}⚠️  Frontend should be deployed to Vercel!${NC}"
+echo -e "${YELLOW}See VERCEL_DEPLOYMENT.md for instructions.${NC}"
+echo ""
+echo "Quick steps:"
+echo "  1. Go to https://vercel.com"
+echo "  2. Import your GitHub repository"
+echo "  3. Set root directory to 'frontend'"
+echo "  4. Add environment variable: NEXT_PUBLIC_API_BASE=https://api.omnidoc.info"
+echo "  5. Deploy!"
 
-# Create frontend .env.local with production API URL
-cat > .env.local <<EOF
-NEXT_PUBLIC_API_BASE=https://api.omnidoc.info
-EOF
-
-npm run build
-pm2 start npm --name "omnidoc-frontend" -- start
-pm2 save
-pm2 startup
-
-echo -e "${GREEN}✅ Deployment complete!${NC}"
+echo -e "${GREEN}✅ Backend deployment complete!${NC}"
 echo ""
 echo -e "${GREEN}Production URLs:${NC}"
-echo "  Frontend: https://omnidoc.info"
+echo "  Frontend: https://omnidoc.info (deploy to Vercel - see VERCEL_DEPLOYMENT.md)"
 echo "  API: https://api.omnidoc.info"
 echo "  API Docs: https://api.omnidoc.info/docs"
 echo ""
-echo -e "${YELLOW}Important:${NC}"
+echo -e "${YELLOW}Important Next Steps:${NC}"
 echo "1. Update GEMINI_API_KEY in .env file with your actual API key"
-echo "2. Configure Oracle Cloud security rules to allow HTTP/HTTPS traffic"
-echo "3. Ensure DNS records point to this server:"
-echo "   - A record: omnidoc.info → $(curl -s ifconfig.me)"
-echo "   - A record: www.omnidoc.info → $(curl -s ifconfig.me)"
-echo "   - A record: api.omnidoc.info → $(curl -s ifconfig.me)"
+echo "2. Deploy frontend to Vercel (see VERCEL_DEPLOYMENT.md)"
+echo "3. Configure Oracle Cloud security rules to allow HTTP/HTTPS traffic"
+echo "4. Ensure DNS records point correctly:"
+echo "   - Frontend (Vercel): omnidoc.info, www.omnidoc.info → Vercel DNS"
+echo "   - Backend API: api.omnidoc.info → $(curl -s ifconfig.me)"
 echo ""
 echo "Check service status:"
 echo "  sudo systemctl status omnidoc-backend"
 echo "  sudo systemctl status omnidoc-celery"
 echo "  sudo systemctl status nginx"
-echo "  pm2 status"
 echo ""
 echo "View logs:"
 echo "  sudo journalctl -u omnidoc-backend -f"
 echo "  sudo journalctl -u omnidoc-celery -f"
-echo "  pm2 logs omnidoc-frontend"
+echo "  sudo journalctl -u nginx -f"
 

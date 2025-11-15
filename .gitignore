@@ -76,6 +76,7 @@ Thumbs.db
 !IMPROVEMENTS.md
 !DOCUMENT_DEPENDENCIES.md
 !PRODUCTION_DOMAIN.md
+!VERCEL_DEPLOYMENT.md
 
 # Documentation files in docs/ (allow QUALITY_SCORING.md)
 docs/*.md

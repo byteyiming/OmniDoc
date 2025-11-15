@@ -39,6 +39,8 @@ All generated from a simple description of your project idea!
 
 ## 🚀 Quick Start
 
+> **💡 Production Deployment**: Frontend is deployed on [Vercel](https://vercel.com), backend on Oracle Cloud. See [Vercel Deployment Guide](VERCEL_DEPLOYMENT.md) for details.
+
 ### 1. Prerequisites
 
 - **Python 3.9+**
@@ -102,7 +104,7 @@ python backend/uvicorn_dev.py
 ./scripts/start_celery_worker.sh
 ```
 
-**Terminal 3 - Frontend (optional, for web UI):**
+**Terminal 3 - Frontend (for development):**
 ```bash
 cd frontend
 pnpm dev  # or npm run dev
