@@ -7,6 +7,7 @@ import GeneratingAnimation from '@/components/GeneratingAnimation';
 import { useProjectStatus } from '@/lib/useProjectStatus';
 import { getWebSocketUrl } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { logger } from '@/lib/logger';
 
 interface ProgressEvent {
   type: string;
@@ -31,6 +32,9 @@ export default function ProjectStatusPage() {
   const [wsConnected, setWsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
+  const maxReconnectAttempts = 10;
+  const isMountedRef = useRef<boolean>(true);
 
   // Fallback polling with SWR
   const { status, isLoading } = useProjectStatus(projectId, {
@@ -38,69 +42,124 @@ export default function ProjectStatusPage() {
     enabled: !!projectId,
   });
 
-  // WebSocket connection
+  // WebSocket connection with exponential backoff
   useEffect(() => {
     if (!projectId) return;
+    
+    isMountedRef.current = true;
+    reconnectAttemptsRef.current = 0;
 
     const connectWebSocket = () => {
+      if (!isMountedRef.current) return;
+      
+      // Check max reconnect attempts
+      if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+        logger.warn('Max WebSocket reconnect attempts reached, falling back to polling', {
+          projectId,
+          attempts: reconnectAttemptsRef.current,
+          maxAttempts: maxReconnectAttempts,
+        });
+        setWsConnected(false);
+        return;
+      }
+
       try {
         const wsUrl = getWebSocketUrl(projectId);
-        console.log('Attempting WebSocket connection to:', wsUrl);
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-          console.log('WebSocket connected successfully');
+          if (!isMountedRef.current) {
+            ws.close();
+            return;
+          }
           setWsConnected(true);
+          reconnectAttemptsRef.current = 0; // Reset on successful connection
           if (reconnectTimeoutRef.current) {
             clearTimeout(reconnectTimeoutRef.current);
             reconnectTimeoutRef.current = null;
           }
+          logger.websocketEvent('connected', projectId, { attempts: reconnectAttemptsRef.current });
         };
 
         ws.onmessage = (event) => {
+          if (!isMountedRef.current) return;
+          
           try {
             const data: ProgressEvent = JSON.parse(event.data);
-            setEvents((prev) => [...prev, data]);
+            logger.websocketEvent('message', projectId, { type: data.type, document_id: data.document_id });
+            
+            // Prevent duplicate events
+            setEvents((prev) => {
+              // Create unique ID for this event
+              const eventId = `${data.type}-${data.document_id || data.project_id || ''}`;
+              const existingIds = new Set(
+                prev.map(e => `${e.type}-${e.document_id || e.project_id || ''}`)
+              );
+              
+              // Special handling for 'complete' events - only allow one
+              if (data.type === 'complete') {
+                if (prev.some(e => e.type === 'complete')) {
+                  return prev; // Skip duplicate complete events
+                }
+              }
+              
+              // Skip if event already exists
+              if (existingIds.has(eventId)) {
+                return prev;
+              }
+              
+              return [...prev, data];
+            });
 
             // Navigate to results when complete
             if (data.type === 'complete') {
+              logger.info('Document generation completed, navigating to results', { projectId });
               setTimeout(() => {
-                router.push(`/project/${projectId}/results`);
+                if (isMountedRef.current) {
+                  router.push(`/project/${projectId}/results`);
+                }
               }, 2000);
             }
           } catch (err) {
-            console.error('Failed to parse WebSocket message:', err);
+            logger.error('Failed to parse WebSocket message', err, { projectId, message: event.data });
           }
         };
 
-        ws.onerror = (error) => {
-          // WebSocket errors are often empty objects, log what we can
-          console.warn('WebSocket connection error (falling back to polling)');
-          if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-            console.warn('WebSocket closed unexpectedly');
-          }
+        ws.onerror = () => {
+          if (!isMountedRef.current) return;
+          logger.warn('WebSocket error', { projectId, attempts: reconnectAttemptsRef.current });
           setWsConnected(false);
           // Don't show error to user - polling will handle updates gracefully
         };
 
         ws.onclose = (event) => {
-          console.log('WebSocket closed', event.code, event.reason || '');
+          if (!isMountedRef.current) return;
+          logger.websocketEvent('closed', projectId, { code: event.code, reason: event.reason, wasClean: event.wasClean });
+          
           setWsConnected(false);
           
           // Only attempt to reconnect if it wasn't a normal closure
           // and we haven't already scheduled a reconnect
-          if (event.code !== 1000 && !reconnectTimeoutRef.current) {
-            console.log('Scheduling WebSocket reconnect in 3 seconds...');
+          if (event.code !== 1000 && !reconnectTimeoutRef.current && isMountedRef.current) {
+            reconnectAttemptsRef.current += 1;
+            
+            // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (max)
+            const baseDelay = 1000;
+            const maxDelay = 30000;
+            const delay = Math.min(baseDelay * Math.pow(2, reconnectAttemptsRef.current - 1), maxDelay);
+            
             reconnectTimeoutRef.current = setTimeout(() => {
               reconnectTimeoutRef.current = null;
-              connectWebSocket();
-            }, 3000);
+              if (isMountedRef.current) {
+                connectWebSocket();
+              }
+            }, delay);
           }
         };
 
         wsRef.current = ws;
       } catch (err) {
-        console.error('Failed to create WebSocket:', err);
+        logger.error('Failed to create WebSocket', err, { projectId, url: getWebSocketUrl(projectId) });
         setWsConnected(false);
       }
     };
@@ -108,45 +167,80 @@ export default function ProjectStatusPage() {
     connectWebSocket();
 
     return () => {
+      isMountedRef.current = false;
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
       }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
     };
   }, [projectId, router]);
 
-  // Update events from polling status
+  // Update events from polling status (fallback when WebSocket is not connected)
   useEffect(() => {
-    if (status && !wsConnected) {
-      // Create events from status for display
+    if (!status) return;
+    
+    // Always sync from status, but avoid duplicates
+    setEvents((prev) => {
       const statusEvents: ProgressEvent[] = [];
+      const existingIds = new Set(
+        prev.map(e => `${e.type}-${e.document_id || e.project_id || ''}`)
+      );
       
-      if (status.status === 'in_progress') {
+      // Add start event if in progress (only if not already exists)
+      // Check both 'start-' and 'plan-' to avoid duplicates
+      if ((status.status === 'in_progress' || status.status === 'complete') && 
+          !existingIds.has('start-') && 
+          !prev.some(e => e.type === 'start' || e.type === 'plan')) {
         statusEvents.push({
           type: 'start',
           project_id: status.project_id,
           timestamp: status.updated_at,
         });
-        
-        status.completed_documents.forEach((docId, index) => {
-          statusEvents.push({
-            type: 'document_completed',
-            document_id: docId,
-            index: String(index + 1),
-            total: String(status.selected_documents.length),
-            timestamp: status.updated_at,
-          });
+      }
+      
+      // Add plan event with total count (only if not already exists)
+      if ((status.status === 'in_progress' || status.status === 'complete') && 
+          !existingIds.has('plan-') && 
+          !prev.some(e => e.type === 'plan') &&
+          status.selected_documents?.length) {
+        statusEvents.push({
+          type: 'plan',
+          project_id: status.project_id,
+          total: String(status.selected_documents.length),
+          timestamp: status.updated_at,
         });
-      } else if (status.status === 'complete') {
+      }
+      
+      // Add completed documents
+      if (status.completed_documents?.length) {
+        status.completed_documents.forEach((docId, index) => {
+          const eventId = `document_completed-${docId}`;
+          if (!existingIds.has(eventId)) {
+            statusEvents.push({
+              type: 'document_completed',
+              document_id: docId,
+              index: String(index + 1),
+              total: String(status.selected_documents?.length || 0),
+              timestamp: status.updated_at,
+            });
+          }
+        });
+      }
+      
+      if (status.status === 'complete' && 
+          !existingIds.has('complete-') && 
+          !prev.some(e => e.type === 'complete')) {
         statusEvents.push({
           type: 'complete',
           project_id: status.project_id,
-          files_count: status.completed_documents.length,
+          files_count: status.completed_documents?.length || 0,
           timestamp: status.updated_at,
         });
-      } else if (status.status === 'failed') {
+      } else if (status.status === 'failed' && !existingIds.has('error-')) {
         statusEvents.push({
           type: 'error',
           project_id: status.project_id,
@@ -155,9 +249,9 @@ export default function ProjectStatusPage() {
         });
       }
 
-      setEvents(statusEvents);
-    }
-  }, [status, wsConnected]);
+      return statusEvents.length > 0 ? [...prev, ...statusEvents] : prev;
+    });
+  }, [status, wsConnected]); // Sync from status polling
 
   const handleViewResults = () => {
     router.push(`/project/${projectId}/results`);

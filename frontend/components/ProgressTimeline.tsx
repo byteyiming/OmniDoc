@@ -75,29 +75,45 @@ export default function ProgressTimeline({
         return `${t('status.generating')}: ${getDocumentName(event.document_id || '') || event.name || event.document_id}`;
       case 'document_completed':
         return `${t('status.completed')}: ${getDocumentName(event.document_id || '') || event.name || event.document_id}`;
+      case 'quality_review_started':
+        return `${t('status.reviewing')}: ${getDocumentName(event.document_id || '') || event.name || event.document_id}`;
+      case 'quality_review_completed':
+        return `${t('status.reviewCompleted')}: ${getDocumentName(event.document_id || '') || event.name || event.document_id}`;
+      case 'improvement_started':
+        return `${t('status.improving')}: ${getDocumentName(event.document_id || '') || event.name || event.document_id}`;
+      case 'improvement_completed':
+        return `${t('status.improvementCompleted')}: ${getDocumentName(event.document_id || '') || event.name || event.document_id}`;
       case 'complete':
         return `${t('status.allDone')} ${(event as any).files_count || 0} ${t('status.documents')}`;
       case 'error':
         return `${t('status.error')}: ${event.message || 'Unknown error'}`;
+      case 'heartbeat':
+        // Don't show heartbeat messages
+        return null;
       default:
+        // For unknown types, try to show document name if available
+        if (event.document_id) {
+          return getDocumentName(event.document_id) || event.name || event.document_id;
+        }
         return event.message || event.type;
     }
   };
 
-  if (events.length === 0) {
-    return (
-      <div className="flex items-center justify-center p-8 text-gray-500">
-        {t('status.waiting')}
-      </div>
-    );
-  }
+  // Always show progress header even if no events yet
+  // if (events.length === 0) {
+  //   return (
+  //     <div className="flex items-center justify-center p-8 text-gray-500">
+  //       {t('status.waiting')}
+  //     </div>
+  //   );
+  // }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">{t('status.progress')}</h3>
+        <h3 className="text-lg font-semibold text-gray-900">{t('status.progress')}</h3>
         {total && (
-          <span className="text-sm text-gray-500">
+          <span className="text-sm font-medium text-gray-900">
             {events.filter((e) => e.type === 'document_completed').length}/
             {total} {t('status.completed')}
           </span>
@@ -106,52 +122,83 @@ export default function ProgressTimeline({
 
       <div className="relative">
         {/* Timeline line */}
-        <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
+        {events.length > 0 && (
+          <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
+        )}
 
         <div className="space-y-4">
-          {events.map((event, index) => (
-            <div key={index} className="relative flex items-start space-x-4">
-              {/* Icon */}
-              <div
-                className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full ${
-                  event.type === 'document_completed' 
-                    ? 'bg-green-500' 
-                    : getEventColor(event.type)
-                } text-white`}
-              >
-                <span className="text-sm">{getEventIcon(event)}</span>
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 rounded-lg bg-white p-3 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium text-gray-900">
-                    {getEventMessage(event)}
-                  </div>
-                  {event.timestamp && (
-                    <div className="text-xs text-gray-500">
-                      {new Date(event.timestamp).toLocaleTimeString()}
-                    </div>
-                  )}
-                </div>
-                {event.index && event.total && (
-                  <div className="mt-2">
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-                      <div
-                        className="h-full bg-blue-500 transition-all duration-300"
-                        style={{
-                          width: `${
-                            (parseInt(event.index) / parseInt(event.total)) *
-                            100
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+          {events.length === 0 ? (
+            <div className="flex items-center justify-center p-8 text-gray-500">
+              {t('status.waiting')}
             </div>
-          ))}
+          ) : (
+            events
+              .filter((event) => {
+                // Filter out heartbeat and other non-user-facing events
+                const message = getEventMessage(event);
+                return message !== null && event.type !== 'heartbeat' && event.type !== 'connected';
+              })
+              .map((event, index) => {
+              const message = getEventMessage(event);
+              if (!message) return null;
+              
+              return (
+                <div key={index} className="relative flex items-start space-x-4">
+                  {/* Icon */}
+                  <div
+                    className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full ${
+                      event.type === 'document_completed' 
+                        ? 'bg-green-500' 
+                        : getEventColor(event.type)
+                    } text-white`}
+                  >
+                    <span className="text-sm">{getEventIcon(event)}</span>
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 rounded-lg bg-white p-3 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium text-gray-900">
+                        {message}
+                      </div>
+                      {event.timestamp && (
+                        <div className="text-xs text-gray-500">
+                          {new Date(event.timestamp).toLocaleTimeString()}
+                        </div>
+                      )}
+                    </div>
+                    {event.type === 'document_completed' && event.index && event.total && (
+                      <div className="mt-2">
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                          <div
+                            className="h-full bg-blue-500 transition-all duration-300"
+                            style={{
+                              width: '100%', // Always 100% for completed documents
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {event.type !== 'document_completed' && event.index && event.total && (
+                      <div className="mt-2">
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                          <div
+                            className="h-full bg-blue-500 transition-all duration-300"
+                            style={{
+                              width: `${
+                                (parseInt(event.index) / parseInt(event.total)) *
+                                100
+                              }%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

@@ -1,7 +1,8 @@
 /**
  * API client utilities for communicating with the OmniDoc backend.
  */
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosError } from 'axios';
+import { logger } from './logger';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
@@ -77,41 +78,81 @@ export interface ProjectDocumentsResponse {
   documents: GeneratedDocument[];
 }
 
+// Type guard for axios errors
+function isAxiosError(error: unknown): error is { response?: { status: number; statusText: string }; request?: unknown; message?: string } {
+  return typeof error === 'object' && error !== null && ('response' in error || 'request' in error);
+}
+
 // API functions
 export async function fetchJSON<T>(url: string): Promise<T> {
+  const startTime = Date.now();
   try {
+    logger.debug(`API GET request: ${url}`);
     const response = await apiClient.get<T>(url);
+    const duration = Date.now() - startTime;
+    logger.apiCall('GET', url, response.status, duration);
     return response.data;
-  } catch (error: any) {
-    if (error.response) {
-      // Server responded with error status
-      throw new Error(`API Error: ${error.response.status} ${error.response.statusText}`);
-    } else if (error.request) {
-      // Request made but no response
-      throw new Error(`Network Error: Unable to connect to backend at ${API_BASE_URL}. Is the server running?`);
-    } else {
-      // Something else happened
-      throw new Error(error.message || 'Unknown error occurred');
+  } catch (error: unknown) {
+    const duration = Date.now() - startTime;
+    if (isAxiosError(error)) {
+      if (error.response) {
+        // Server responded with error status
+        logger.apiCall('GET', url, error.response.status, duration, {
+          error: error.response.statusText,
+          data: (error.response as any).data,
+        });
+        throw new Error(`API Error: ${error.response.status} ${error.response.statusText}`);
+      } else if (error.request) {
+        // Request made but no response
+        logger.apiCall('GET', url, undefined, duration, {
+          error: 'Network error - no response',
+        });
+        throw new Error(`Network Error: Unable to connect to backend at ${API_BASE_URL}. Is the server running?`);
+      }
     }
+    // Something else happened
+    logger.error('API GET request failed', error, { url, duration });
+    if (error instanceof Error) {
+      throw new Error(`Unknown error: ${error.message}`);
+    }
+    throw new Error('Unknown error occurred');
   }
 }
 
 export async function postJSON<T>(url: string, data: unknown): Promise<T> {
+  const startTime = Date.now();
   try {
+    logger.debug(`API POST request: ${url}`, { dataSize: JSON.stringify(data).length });
     const response = await apiClient.post<T>(url, data);
+    const duration = Date.now() - startTime;
+    logger.apiCall('POST', url, response.status, duration);
     return response.data;
-  } catch (error: any) {
-    if (error.response) {
-      // Server responded with error status
-      const errorMsg = error.response.data?.detail || error.response.statusText;
-      throw new Error(`API Error: ${error.response.status} - ${errorMsg}`);
-    } else if (error.request) {
-      // Request made but no response
-      throw new Error(`Network Error: Unable to connect to backend at ${API_BASE_URL}. Is the server running?`);
-    } else {
-      // Something else happened
-      throw new Error(error.message || 'Unknown error occurred');
+  } catch (error: unknown) {
+    const duration = Date.now() - startTime;
+    if (isAxiosError(error)) {
+      if (error.response) {
+        // Server responded with error status
+        const responseData = error.response as { status: number; statusText: string; data?: { detail?: string } };
+        const errorMsg = responseData.data?.detail || responseData.statusText;
+        logger.apiCall('POST', url, responseData.status, duration, {
+          error: errorMsg,
+          data: responseData.data,
+        });
+        throw new Error(`API Error: ${responseData.status} - ${errorMsg}`);
+      } else if (error.request) {
+        // Request made but no response
+        logger.apiCall('POST', url, undefined, duration, {
+          error: 'Network error - no response',
+        });
+        throw new Error(`Network Error: Unable to connect to backend at ${API_BASE_URL}. Is the server running?`);
+      }
     }
+    logger.error('API POST request failed', error, { url, duration });
+    // Something else happened
+    if (error instanceof Error) {
+      throw new Error(`Unknown error: ${error.message}`);
+    }
+    throw new Error('Unknown error occurred');
   }
 }
 
