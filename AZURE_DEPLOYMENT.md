@@ -9,6 +9,8 @@ Complete guide for deploying OmniDoc on Microsoft Azure.
 - Domain name (optional, but recommended)
 - SSH access (if using VM)
 
+> **💡 Free Tier Note**: See [Azure Free Tier Setup Guide](AZURE_FREE_TIER_SETUP.md) for detailed setup using your free tier quotas (750 hours/month VM, Always Free App Service).
+
 ## 🎯 Azure Deployment Options
 
 ### Option 1: Azure App Service (Recommended - Easier)
@@ -37,7 +39,11 @@ Complete guide for deploying OmniDoc on Microsoft Azure.
 - ⚠️ Need to configure SSL manually
 - ⚠️ More setup required
 
-## 🚀 Option 1: Azure App Service Deployment
+## 🚀 Option 1: Azure App Service Deployment (Recommended - Always Free)
+
+**Best for**: Easy deployment, automatic scaling, no server management
+
+Azure App Service has an **Always Free** tier (F1) that's not shown in your quota because it's unlimited. This is the easiest option.
 
 ### Step 1: Create Azure App Service
 
@@ -53,7 +59,10 @@ Complete guide for deploying OmniDoc on Microsoft Azure.
    - **Runtime stack**: Python 3.9 or 3.10
    - **Operating System**: Linux
    - **Region**: Choose closest to you
-   - **App Service Plan**: Create new (Free tier available)
+   - **App Service Plan**: 
+     - **Plan**: Create new
+     - **Pricing tier**: **Free (F1)** - Always Free, unlimited
+     - Or **Basic B1** if you need more resources (~$13/month)
 6. Click **Review + create** → **Create**
 
 ### Step 2: Configure Environment Variables
@@ -149,7 +158,11 @@ celery -A src.tasks.celery_app worker --loglevel=info
 4. Use the same environment variables
 5. Deploy from the same GitHub repository
 
-## 🖥️ Option 2: Azure VM Deployment
+## 🖥️ Option 2: Azure VM Deployment (750 Hours/Month Free)
+
+**Best for**: Full control, custom configuration, using your free VM quota
+
+You have **750 hours/month** of B1s VM free (enough for 24/7 operation).
 
 ### Step 1: Create Azure VM
 
@@ -160,7 +173,9 @@ celery -A src.tasks.celery_app worker --loglevel=info
    - **Resource Group**: Create new
    - **VM name**: `omnidoc-backend`
    - **Image**: Ubuntu 22.04 LTS
-   - **Size**: Standard_B1s (Free tier) or better
+   - **Size**: **Standard_B1s** (1 vCPU, 1 GB RAM) - **FREE 750 hours/month**
+     - This is perfect for OmniDoc backend
+     - You can run both backend and Celery worker on the same VM
    - **Authentication**: SSH public key (recommended)
    - **Public inbound ports**: Allow SSH (22)
 4. Click **Review + create** → **Create**
@@ -310,21 +325,61 @@ sudo certbot --nginx -d api.omnidoc.info
 2. View VM performance metrics
 3. Set up **Azure Monitor** for application logs
 
-## 💰 Cost Comparison
+## 💰 Cost Comparison & Free Tier Analysis
 
-### Azure Free Tier
+### Your Azure Free Tier Quota (12 months)
 
-- **App Service**: 1 Free tier instance (limited resources)
-- **VM**: No always-free tier (but pay-as-you-go is cheap)
-- **Database**: Azure Database for PostgreSQL has free tier (limited)
-- **Redis**: Azure Cache for Redis Basic C0 (free tier, very limited)
+Based on your Azure free account, you have:
 
-### Recommended Setup (Cost-Effective)
+✅ **Virtual Machines, BS Series, B1s**: 750 hours/month (FREE)
+- Perfect for running the backend API
+- 1 vCPU, 1 GB RAM
+- Enough for OmniDoc backend + Celery worker
 
-- **Backend**: Azure App Service (Free tier or Basic B1 ~$13/month)
-- **Celery Worker**: Separate App Service (or same with scaling)
-- **Database**: Neon (free tier) - cheaper than Azure Database
-- **Redis**: Upstash (free tier) - cheaper than Azure Cache
+✅ **Azure Database for PostgreSQL, Flexible Server B1MS**: 750 hours/month (FREE)
+- 1 vCPU, 2 GB RAM
+- 32 GB storage included
+- Alternative to Neon (but Neon is still recommended - see below)
+
+✅ **Storage**: 100 GB total (various types)
+✅ **Data Transfer**: 15 GB/month outbound
+
+### Recommended Setup (Based on Your Free Tier)
+
+#### Option A: Use Azure Free Resources (100% Free)
+
+- **Backend**: Azure VM B1s (750 hours/month FREE)
+- **Celery Worker**: Same VM (run both on one instance)
+- **Database**: Azure Database for PostgreSQL B1MS (750 hours/month FREE)
+- **Redis**: Upstash (free tier) - Azure Cache not in free tier
+
+**Cost**: $0/month (completely free for 12 months)
+
+#### Option B: Hybrid (Recommended - More Reliable)
+
+- **Backend**: Azure VM B1s (750 hours/month FREE)
+- **Celery Worker**: Same VM
+- **Database**: Neon (free tier) - More reliable, better free tier
+- **Redis**: Upstash (free tier) - More reliable, better free tier
+
+**Cost**: $0/month (completely free)
+
+**Why Option B?**
+- Neon and Upstash have better free tiers (no time limits)
+- Azure Database free tier expires after 12 months
+- Easier to manage (managed services)
+- Better performance and reliability
+
+### Azure App Service
+
+**Note**: Azure App Service Free tier (F1) is **Always Free** (not shown in your quota list because it's unlimited). You can also use this instead of VM:
+
+- **Backend**: Azure App Service F1 (Always Free)
+- **Celery Worker**: Separate App Service F1 (Always Free)
+- **Database**: Neon (free tier)
+- **Redis**: Upstash (free tier)
+
+**Cost**: $0/month (completely free, no expiration)
 
 ## 🔄 Migration from Oracle Cloud
 
