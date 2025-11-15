@@ -75,6 +75,7 @@ Thumbs.db
 !UI_IMPROVEMENTS.md
 !IMPROVEMENTS.md
 !DOCUMENT_DEPENDENCIES.md
+!PRODUCTION_DOMAIN.md
 
 # Documentation files in docs/ (allow QUALITY_SCORING.md)
 docs/*.md
