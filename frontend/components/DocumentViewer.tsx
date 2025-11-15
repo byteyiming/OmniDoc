@@ -17,7 +17,9 @@ export default function DocumentViewer({
   const [selectedDocId, setSelectedDocId] = useState<string | null>(
     documents.length > 0 ? documents[0].id : null
   );
+  const [copySuccess, setCopySuccess] = useState(false);
   const contentScrollRef = useRef<HTMLDivElement>(null);
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const selectedDoc = documents.find((doc) => doc.id === selectedDocId);
 
@@ -28,14 +30,68 @@ export default function DocumentViewer({
     }
   }, [selectedDocId]);
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleDownload = (docId: string) => {
     const url = getDocumentDownloadUrl(projectId, docId);
     window.open(url, '_blank');
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    // You could add a toast notification here
+  const copyToClipboard = async (text: string) => {
+    try {
+      // Check if clipboard API is available
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+          const successful = document.execCommand('copy');
+          if (successful) {
+            showCopySuccess();
+          } else {
+            console.error('Failed to copy text');
+            alert('Failed to copy to clipboard. Please copy manually.');
+          }
+        } catch (err) {
+          console.error('Fallback copy failed:', err);
+          alert('Failed to copy to clipboard. Please copy manually.');
+        } finally {
+          document.body.removeChild(textArea);
+        }
+        return;
+      }
+
+      // Use modern clipboard API
+      await navigator.clipboard.writeText(text);
+      showCopySuccess();
+    } catch (err) {
+      console.error('Failed to copy text:', err);
+      alert('Failed to copy to clipboard. Please copy manually.');
+    }
+  };
+
+  const showCopySuccess = () => {
+    setCopySuccess(true);
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+    }
+    copyTimeoutRef.current = setTimeout(() => {
+      setCopySuccess(false);
+    }, 2000);
   };
 
   return (
@@ -102,13 +158,17 @@ export default function DocumentViewer({
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900">{selectedDoc.name}</h2>
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex space-x-2 items-center">
                   {selectedDoc.content && (
                     <button
                       onClick={() => copyToClipboard(selectedDoc.content!)}
-                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                        copySuccess
+                          ? 'border-green-500 bg-green-50 text-green-700'
+                          : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
                     >
-                      Copy
+                      {copySuccess ? '✓ Copied!' : 'Copy'}
                     </button>
                   )}
                   {selectedDoc.file_path && (
