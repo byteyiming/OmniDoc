@@ -80,3 +80,6 @@ Thumbs.db
 # Documentation files in docs/ (allow QUALITY_SCORING.md)
 docs/*.md
 !docs/QUALITY_SCORING.md
+
+# Allow important root-level documentation
+!NEON_SETUP.md
