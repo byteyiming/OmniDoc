@@ -494,22 +494,26 @@ Issues Identified:
                         try:
                             agent_type = AgentType(document_id)
                         except ValueError:
-                            # Not a standard AgentType, use document_type
-                            pass
+                            # Not a standard AgentType - use fallback
+                            logger.debug(f"Document {document_id} not in AgentType enum, using TECHNICAL_DOCUMENTATION fallback")
+                            try:
+                                agent_type = AgentType.TECHNICAL_DOCUMENTATION  # Generic fallback
+                            except:
+                                agent_type = list(AgentType)[0]  # Last resort
                         
-                        if agent_type:
-                            output = AgentOutput(
-                                agent_type=agent_type,
-                                document_type=document_id,
-                                content=improved_content,
-                                file_path=document_result.get("file_path"),  # Virtual path
-                                status=DocumentStatus.COMPLETE,
-                                quality_score=document_result.get("quality_score"),
-                            )
-                            self.context_manager.save_agent_output(project_id, output)
-                            logger.info(f"✅ Document {document_id} improved and updated in database")
+                        # Always save to database - document_type identifies the actual document
+                        output = AgentOutput(
+                            agent_type=agent_type,
+                            document_type=document_id,  # This is the key identifier
+                            content=improved_content,
+                            file_path=document_result.get("file_path"),  # Virtual path
+                            status=DocumentStatus.COMPLETE,
+                            quality_score=document_result.get("quality_score"),
+                        )
+                        self.context_manager.save_agent_output(project_id, output)
+                        logger.info(f"✅ Document {document_id} improved and updated in database [agent_type: {agent_type.value}, document_type: {document_id}]")
                     except Exception as e:
-                        logger.warning(f"Could not update improved document in database: {e}")
+                        logger.error(f"❌ Could not update improved document {document_id} in database: {e}", exc_info=True)
 
             generated_docs[document_id] = document_result
             completed.append(document_id)
