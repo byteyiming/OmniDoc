@@ -2,6 +2,7 @@
 Celery tasks for document generation
 """
 import asyncio
+import sys
 import time
 from typing import Any, Dict, List, Optional
 
@@ -14,6 +15,12 @@ from src.utils.logger import get_logger
 from src.web.websocket_manager import websocket_manager
 
 logger = get_logger(__name__)
+
+# Force log handler to stdout for Railway
+# Railway captures stdout/stderr, so we need to ensure logs go there
+for handler in logger.handlers:
+    if hasattr(handler, 'stream'):
+        handler.stream = sys.stdout
 
 
 def send_websocket_notification(project_id: str, message: Dict[str, Any]) -> None:
@@ -64,14 +71,20 @@ def generate_documents_task(
     
     task_start_time = time.time()
     try:
+        # IMPORTANT: Force log to stdout/stderr (Railway captures stdout)
+        import sys
         logger.info(
-            "Starting document generation task [Project: %s] [Documents: %d] [Attempt: %d/%d] [Provider: %s]",
+            "🚀 Starting document generation task [Project: %s] [Documents: %d] [Attempt: %d/%d] [Provider: %s] [Task ID: %s]",
             project_id,
             len(selected_documents),
             self.request.retries + 1,
             self.max_retries + 1,
-            provider_name or "default"
+            provider_name or "default",
+            self.request.id
         )
+        # Also print to stderr for Railway logs
+        print(f"[CELERY TASK] Starting document generation for project {project_id}", file=sys.stderr, flush=True)
+        print(f"[CELERY TASK] Selected documents: {selected_documents}", file=sys.stderr, flush=True)
         
         # Send WebSocket notification
         send_websocket_notification(project_id, {
@@ -107,7 +120,8 @@ def generate_documents_task(
             send_websocket_notification(project_id, message)
         
         # Run generation asynchronously with progress callback
-        logger.info("Starting document generation workflow [Project: %s]", project_id)
+        logger.info("📋 Starting document generation workflow [Project: %s] [Documents: %s]", project_id, selected_documents)
+        print(f"[CELERY TASK] Starting workflow for project {project_id}", file=sys.stderr, flush=True)
         generation_start_time = time.time()
         results = asyncio.run(
             coordinator.async_generate_all_docs(
@@ -118,6 +132,7 @@ def generate_documents_task(
                 progress_callback=progress_callback,
             )
         )
+        print(f"[CELERY TASK] Workflow completed for project {project_id}", file=sys.stderr, flush=True)
         generation_duration = time.time() - generation_start_time
         
         logger.info(

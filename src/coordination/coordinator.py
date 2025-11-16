@@ -337,12 +337,15 @@ Issues Identified:
 
         for index, document_id in enumerate(execution_plan, start=1):
             logger.info(
-                "Generating document %d/%d: %s [Project: %s]",
+                "📄 Generating document %d/%d: %s [Project: %s]",
                 index,
                 total,
                 document_id,
                 project_id
             )
+            # Also print to stderr for Railway visibility
+            import sys
+            print(f"[DOCUMENT GENERATION] Starting {document_id} ({index}/{total}) for project {project_id}", file=sys.stderr, flush=True)
             
             definition = self.definitions.get(document_id)
             if not definition:
@@ -417,13 +420,16 @@ Issues Identified:
                     project_id=project_id,
                 )
                 doc_duration = time.time() - doc_start_time
+                content_length = len(document_result.get("content", ""))
                 logger.info(
-                    "Document %s generated successfully [Duration: %.2fs] [Size: %d chars] [Project: %s]",
+                    "✅ Document %s generated successfully [Duration: %.2fs] [Size: %d chars] [Project: %s]",
                     document_id,
                     doc_duration,
-                    len(document_result.get("content", "")),
+                    content_length,
                     project_id
                 )
+                # Also print to stderr for Railway visibility
+                print(f"[DOCUMENT GENERATION] ✅ Completed {document_id} ({index}/{total}) in {doc_duration:.2f}s ({content_length} chars) for project {project_id}", file=sys.stderr, flush=True)
             except Exception as e:
                 doc_duration = time.time() - doc_start_time
                 logger.error(
