@@ -66,18 +66,47 @@ class ContextManager:
         self._initialize_database()
     
     def _get_connection(self):
-        """Get a database connection from pool"""
-        if self._connection_pool is None:
-            # Fallback to direct connection if pool failed
-            return psycopg2.connect(self.db_url)
-        
-        try:
-            return self._connection_pool.getconn()
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to get connection from pool: {e}, using direct connection")
-            return psycopg2.connect(self.db_url)
+        """Get a database connection from pool with health check"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if self._connection_pool is None:
+                    # Fallback to direct connection if pool failed
+                    conn = psycopg2.connect(self.db_url)
+                else:
+                    conn = self._connection_pool.getconn()
+                
+                # Health check: verify connection is still alive
+                if conn.closed:
+                    logger.warning(f"Connection from pool is closed, getting new connection (attempt {attempt + 1}/{max_retries})")
+                    if self._connection_pool is not None:
+                        try:
+                            self._connection_pool.putconn(conn, close=True)
+                        except Exception:
+                            pass
+                    conn = psycopg2.connect(self.db_url) if self._connection_pool is None else self._connection_pool.getconn()
+                
+                # Test connection with a simple query
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1")
+                cursor.close()
+                
+                return conn
+            except (psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.DatabaseError) as e:
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        f"Database connection failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                        f"Retrying..."
+                    )
+                    import time
+                    time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                    continue
+                else:
+                    logger.error(f"Failed to get database connection after {max_retries} attempts: {e}")
+                    raise
+            except Exception as e:
+                logger.error(f"Unexpected error getting database connection: {e}")
+                raise
     
     def _put_connection(self, conn):
         """Return a connection to the pool with health check"""
