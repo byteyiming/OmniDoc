@@ -27,6 +27,7 @@ Monitoring:
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -36,6 +37,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from src.config.document_catalog import load_document_definitions
 from src.coordination.coordinator import WorkflowCoordinator
@@ -66,7 +69,6 @@ def match_origin(origin: str, pattern: str) -> bool:
     # Support wildcard patterns like https://*.vercel.app
     if "*" in pattern:
         # Replace * with regex pattern
-        import re
         pattern_regex = pattern.replace(".", r"\.").replace("*", r".+")
         return bool(re.match(f"^{pattern_regex}$", origin))
     
@@ -204,9 +206,6 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Custom CORS middleware to support wildcard patterns
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
-
 class WildcardCORSMiddleware(BaseHTTPMiddleware):
     """CORS middleware that supports wildcard patterns in allowed origins."""
     
