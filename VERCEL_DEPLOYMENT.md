@@ -7,15 +7,15 @@ This guide explains how to deploy the OmniDoc frontend to Vercel while keeping t
 ## Architecture
 
 - **Frontend**: Deployed on Vercel (https://omnidoc.info)
-- **Backend API**: Deployed on Oracle Cloud (https://api.omnidoc.info)
+- **Backend API**: Deployed on Railway (https://omnidoc-production.up.railway.app)
 - **Database**: Neon (managed PostgreSQL)
-- **Task Queue**: Redis on Oracle Cloud
+- **Task Queue**: Upstash Redis
 
 ## Prerequisites
 
 1. Vercel account (free tier is sufficient)
 2. GitHub repository connected to Vercel
-3. Backend API already deployed on Oracle Cloud
+3. Backend API already deployed on Railway (see [RAILWAY_DEPLOYMENT.md](../RAILWAY_DEPLOYMENT.md))
 
 ## Deployment Steps
 
@@ -42,13 +42,29 @@ This guide explains how to deploy the OmniDoc frontend to Vercel while keeping t
 
 Add these environment variables in Vercel:
 
+**For Railway default domain:**
+```
+NEXT_PUBLIC_API_BASE=https://omnidoc-production.up.railway.app
+```
+
+**For custom domain (if configured):**
 ```
 NEXT_PUBLIC_API_BASE=https://api.omnidoc.info
 ```
 
+**How to add in Vercel:**
+1. Go to your project → **Settings** → **Environment Variables**
+2. Click **"Add New"**
+3. Name: `NEXT_PUBLIC_API_BASE`
+4. Value: Your Railway backend URL (see above)
+5. Select environments: **Production**, **Preview**, **Development**
+6. Click **"Save"**
+7. **Redeploy** your application for changes to take effect
+
 **Important**: 
 - The `NEXT_PUBLIC_` prefix makes the variable available in the browser
 - This tells the frontend where to connect to the backend API
+- After adding variables, you must redeploy (Vercel won't auto-redeploy)
 
 ### 4. Deploy
 
@@ -70,29 +86,25 @@ NEXT_PUBLIC_API_BASE=https://api.omnidoc.info
 
 ## Backend CORS Configuration
 
-The backend on Oracle Cloud needs to allow requests from Vercel. Update your `.env` file on the server:
+The backend on Railway needs to allow requests from Vercel. Update your Railway Variables:
 
-```bash
-ALLOWED_ORIGINS=https://omnidoc.info,https://www.omnidoc.info,https://*.vercel.app
-```
+1. Go to Railway → Your Backend Service → **Variables**
+2. Update `ALLOWED_ORIGINS`:
+   ```
+   ALLOWED_ORIGINS=https://omnidoc.info,https://www.omnidoc.info,https://*.vercel.app
+   ```
+3. Click **"Update Variables"**
+4. Railway will automatically redeploy
 
-Or if you want to allow all Vercel preview deployments:
-
-```bash
-ALLOWED_ORIGINS=https://omnidoc.info,https://www.omnidoc.info,https://*.vercel.app,https://*.vercel-dns.com
-```
-
-After updating, restart the backend:
-
-```bash
-sudo systemctl restart omnidoc-backend
-```
+This is already configured in `RAILWAY_VARIABLES.txt` - just make sure it's set correctly in Railway.
 
 ## Environment Variables Reference
 
 ### Required
 
-- `NEXT_PUBLIC_API_BASE`: Backend API URL (e.g., `https://api.omnidoc.info`)
+- `NEXT_PUBLIC_API_BASE`: Backend API URL 
+  - Railway default: `https://omnidoc-production.up.railway.app`
+  - Custom domain: `https://api.omnidoc.info` (if configured)
 
 ### Optional
 
@@ -135,9 +147,14 @@ If you see CORS errors:
 
 ### API Connection Issues
 
-1. Verify `NEXT_PUBLIC_API_BASE` is set correctly in Vercel
-2. Check backend is running: `sudo systemctl status omnidoc-backend`
-3. Test API directly: `curl https://api.omnidoc.info/health`
+1. Verify `NEXT_PUBLIC_API_BASE` is set correctly in Vercel Environment Variables
+2. Check backend is running: Railway → Your Service → **Metrics** or **Logs**
+3. Test API directly: 
+   ```bash
+   curl https://omnidoc-production.up.railway.app/health
+   ```
+4. Make sure you **redeployed** after adding environment variables
+5. Check browser console for CORS errors
 
 ### Build Failures
 
@@ -149,7 +166,7 @@ If you see CORS errors:
 
 - **Vercel Dashboard**: View deployments, logs, and analytics
 - **Vercel CLI**: `vercel logs` for real-time logs
-- **Backend Logs**: `sudo journalctl -u omnidoc-backend -f`
+- **Backend Logs**: Railway → Your Service → **Logs** tab
 
 ## Cost
 

@@ -105,11 +105,16 @@ BACKEND_PORT=8000
 
 ### Step 6: Configure Custom Domain (Optional)
 
+**For detailed instructions, see [CUSTOM_DOMAIN_SETUP.md](CUSTOM_DOMAIN_SETUP.md)**
+
+Quick steps:
 1. Go to **Settings** → **Domains**
 2. Click **"Custom Domain"**
 3. Add `api.omnidoc.info`
-4. Follow DNS configuration instructions
-5. Railway will automatically configure SSL
+4. Follow DNS configuration instructions (add A record or CNAME)
+5. Wait for DNS propagation (1-24 hours)
+6. Railway will automatically configure SSL
+7. Update `ALLOWED_ORIGINS` in Variables to include your custom domain
 
 ## 🔄 Setting Up Celery Worker
 
