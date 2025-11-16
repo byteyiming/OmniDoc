@@ -38,7 +38,12 @@ class ContextManager:
             max_conn: Maximum number of connections in pool
         """
         if db_url is None:
-            db_url = os.getenv("DATABASE_URL", "postgresql://localhost/omnidoc")
+            db_url = os.getenv("DATABASE_URL")
+            if not db_url:
+                raise ValueError(
+                    "DATABASE_URL environment variable is not set. "
+                    "Please set it in Railway Variables or your .env file."
+                )
         
         self.db_url = db_url
         self._lock = threading.Lock()

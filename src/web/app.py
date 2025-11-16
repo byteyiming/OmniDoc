@@ -66,6 +66,34 @@ coordinator: Optional[WorkflowCoordinator] = None
 context_manager: Optional[ContextManager] = None
 
 
+def validate_environment() -> None:
+    """
+    Validate required environment variables before startup.
+    
+    Raises:
+        ValueError: If required environment variables are missing
+    """
+    required_vars = {
+        "DATABASE_URL": "Database connection string (e.g., postgresql://...)",
+        "REDIS_URL": "Redis connection string (e.g., redis://...)",
+    }
+    
+    missing = []
+    for var, description in required_vars.items():
+        if not os.getenv(var):
+            missing.append(f"{var} ({description})")
+    
+    if missing:
+        error_msg = (
+            "Missing required environment variables:\n"
+            + "\n".join(f"  - {var}" for var in missing)
+            + "\n\n"
+            + "Please set these in Railway Variables (Settings → Variables) or your .env file."
+        )
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -75,6 +103,7 @@ async def lifespan(app: FastAPI):
     This ensures proper resource management and dependency injection.
     
     Startup:
+    - Validates required environment variables
     - Creates database connection manager
     - Initializes workflow coordinator
     - Loads document definitions
@@ -89,6 +118,14 @@ async def lifespan(app: FastAPI):
         startup and shutdown. Changes here affect all requests.
     """
     global coordinator, context_manager
+    
+    # Validate environment variables first
+    try:
+        validate_environment()
+    except ValueError as e:
+        logger.error(f"Environment validation failed: {e}")
+        raise
+    
     context_manager = ContextManager()
     coordinator = WorkflowCoordinator(context_manager=context_manager)
     

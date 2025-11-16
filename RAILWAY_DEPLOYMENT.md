@@ -34,7 +34,9 @@ Complete guide for deploying OmniDoc backend on Railway.
 
 ### Step 3: Configure Environment Variables
 
-Go to **Variables** tab and add:
+**⚠️ IMPORTANT**: All environment variables must be set before deployment, otherwise the application will fail to start.
+
+Go to **Variables** tab and add **ALL** of the following:
 
 #### Database (Neon)
 ```
@@ -83,6 +85,11 @@ RATE_LIMIT_PER_DAY=50
 BACKEND_HOST=0.0.0.0
 BACKEND_PORT=8000
 ```
+
+**⚠️ Critical**: Make sure you've added **ALL** variables above, especially:
+- `DATABASE_URL` (required - app will crash without it)
+- `REDIS_URL` (required - app will crash without it)
+- `GEMINI_API_KEY` (required if using Gemini)
 
 ### Step 4: Configure Port
 
