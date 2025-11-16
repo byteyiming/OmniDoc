@@ -2,6 +2,16 @@
 
 ## 问题：文档没有生成，但在 Railway 上看不到日志
 
+### ❓ 常见问题：同一个 Dockerfile 可以部署两个服务吗？
+
+**答案：可以！** Railway 完全支持用同一个 Dockerfile 部署多个服务。
+
+**工作原理：**
+- Backend 服务：使用 Dockerfile 的默认 `CMD`（运行 Gunicorn API 服务器）
+- Celery Worker 服务：使用同一个 Dockerfile，但通过 **Custom Start Command** 覆盖 `CMD`（运行 Celery worker）
+
+这样两个服务使用相同的代码和依赖，只是启动命令不同。
+
 ### 🔍 检查清单
 
 #### 1. **确认 Celery Worker 服务正在运行**
@@ -43,7 +53,20 @@
 
 如果看到这个日志，说明任务已提交到队列。
 
-#### 4. **检查 Celery Worker 是否处理任务**
+#### 4. **检查任务是否被提交到队列（重要！）**
+
+在 `omnidoc-backend` 的日志中，查找：
+```
+[TASK SUBMITTED] Task ID: <task-id>, Project: <project-id>, Queue: celery
+✅ Submitted generation task <task-id> for project <project-id>
+```
+
+如果**没有**看到这个日志，说明：
+- ❌ 任务提交失败
+- ❌ Redis 连接失败
+- ❌ Celery 配置错误
+
+#### 5. **检查 Celery Worker 是否处理任务**
 
 在 `omnidoc-celery-worker` 的日志中，你应该看到：
 ```
@@ -52,8 +75,9 @@
 [DOCUMENT GENERATION] Starting <document-id> (1/7) for project <project-id>
 ```
 
-如果**没有**看到这些日志，说明：
-- ❌ Celery Worker 没有连接到正确的 Redis
+如果**没有**看到这些日志，但看到 `[TASK SUBMITTED]`，说明：
+- ❌ Celery Worker 没有连接到正确的 Redis（**最常见问题！**）
+- ❌ Backend 和 Worker 使用不同的 `REDIS_URL`
 - ❌ 任务在队列中但没有被 worker 处理
 - ❌ Celery Worker 配置错误
 
@@ -95,20 +119,39 @@
    - 点击 **"Deploy"**
    - 等待部署完成
 
-### 问题 2：Celery Worker 连接 Redis 失败
+### 问题 2：Celery Worker 连接 Redis 失败或接收不到任务
+
+**⚠️ 这是最常见的问题！**
 
 **检查 Redis 配置：**
 
-1. 确认 `REDIS_URL` 环境变量已设置（在 `omnidoc-celery-worker` 服务的 Variables 中）
-2. 确认 `REDIS_URL` 使用 `rediss://` 协议（如果使用 Upstash）
-3. 在 Celery Worker 日志中查找连接错误：
-   ```
-   Redis connection failed: ...
-   ```
-4. 确认 Redis URL 格式正确：
+1. **确认 Backend 和 Worker 使用相同的 `REDIS_URL`**：
+   - 在 Railway 上，打开 `omnidoc-backend` 服务的 **Variables** 标签
+   - 复制 `REDIS_URL` 的值
+   - 打开 `omnidoc-celery-worker` 服务的 **Variables** 标签
+   - 确认 `REDIS_URL` 的值**完全相同**（包括协议、密码、主机、端口）
+   - ⚠️ 如果不同，任务会被提交到一个 Redis，但 Worker 连接到另一个 Redis！
+
+2. **确认 `REDIS_URL` 使用 `rediss://` 协议**（如果使用 Upstash）：
    ```
    rediss://default:<password>@<host>:6379?ssl_cert_reqs=none
    ```
+
+3. **在 Celery Worker 日志中查找连接信息**：
+   ```
+   [2025-11-16 00:00:00,000: INFO/MainProcess] Connected to rediss://...
+   [2025-11-16 00:00:00,000: INFO/MainProcess] celery@xxx ready.
+   ```
+
+4. **使用诊断脚本检查**（在 Railway Shell 中运行）：
+   ```bash
+   python scripts/check_celery_queue.py
+   ```
+   这会检查：
+   - Redis 连接
+   - Celery broker 连接
+   - 队列中的待处理任务
+   - Celery 配置
 
 ### 问题 3：任务在队列中但没有被处理
 

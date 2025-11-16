@@ -16,26 +16,55 @@ from src.web.websocket_manager import websocket_manager
 
 logger = get_logger(__name__)
 
-# Force log handler to stdout for Railway
-# Railway captures stdout/stderr, so we need to ensure logs go there
-for handler in logger.handlers:
-    if hasattr(handler, 'stream'):
-        handler.stream = sys.stdout
+# In Celery worker, ensure all handlers use stdout/stderr (Railway captures these)
+# Remove any file handlers that might cause "stream is not seekable" errors
+for handler in list(logger.handlers):
+    # Remove RotatingFileHandler in Celery worker (causes seek errors)
+    if hasattr(handler, 'baseFilename') and hasattr(handler, 'shouldRollover'):
+        logger.removeHandler(handler)
+        logger.debug(f"Removed file handler in Celery worker: {handler}")
+    
+    # Ensure console handlers use stdout
+    if hasattr(handler, 'stream') and handler.stream in (sys.stdout, sys.stderr):
+        # Already using stdout/stderr - good
+        pass
 
 
 def send_websocket_notification(project_id: str, message: Dict[str, Any]) -> None:
     """
     Send WebSocket notification to connected clients.
-    This runs in an async context to send messages.
+    
+    Note: In Celery worker, we can't create a new event loop because
+    asyncio.run() is already running. We'll use a thread-safe approach
+    or skip WebSocket notifications in worker (they're not critical).
     """
     try:
-        # Create new event loop for this thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(websocket_manager.send_progress(project_id, message))
-        loop.close()
+        # Check if we're in an async context (Celery worker with asyncio.run)
+        try:
+            loop = asyncio.get_running_loop()
+            # If we're here, we're in an async context - can't create new loop
+            # Use a thread to send the notification
+            import threading
+            def send_in_thread():
+                try:
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    new_loop.run_until_complete(websocket_manager.send_progress(project_id, message))
+                    new_loop.close()
+                except Exception as e:
+                    logger.debug(f"WebSocket notification failed in thread: {e}")
+            
+            thread = threading.Thread(target=send_in_thread, daemon=True)
+            thread.start()
+        except RuntimeError:
+            # No running event loop - safe to create new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(websocket_manager.send_progress(project_id, message))
+            loop.close()
     except Exception as exc:
-        logger.warning(f"Failed to send WebSocket notification for project {project_id}: {exc}")
+        # WebSocket notifications are not critical - log as debug to reduce noise
+        logger.debug(f"WebSocket notification skipped for project {project_id}: {exc}")
 
 
 @celery_app.task(

@@ -9,6 +9,7 @@ Features:
 - Environment-aware configuration (DEV/PROD)
 """
 import logging
+import os
 import sys
 import json
 import time
@@ -117,8 +118,12 @@ def setup_logger(
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
     
-    # File handler (if log_dir specified)
-    if log_dir_path:
+    # File handler (if log_dir specified and not in Celery worker)
+    # Skip file handler in Celery worker to avoid "stream is not seekable" error
+    # Celery worker processes stdout/stderr which don't support seek operations
+    is_celery_worker = os.getenv("CELERY_WORKER", "").lower() in ("true", "1") or "celery" in sys.argv[0] if len(sys.argv) > 0 else False
+    
+    if log_dir_path and not is_celery_worker:
         log_path = Path(log_dir_path)
         log_path.mkdir(parents=True, exist_ok=True)
         

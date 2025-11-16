@@ -140,7 +140,10 @@ async def create_project(request: Request, project_request: ProjectCreateRequest
             codebase_path=project_request.codebase_path,
         )
         
-        logger.info(f"Submitted generation task {task.id} for project {project_id} [Request-ID: {getattr(request.state, 'request_id', 'N/A')}]")
+        logger.info(f"✅ Submitted generation task {task.id} for project {project_id} [Request-ID: {getattr(request.state, 'request_id', 'N/A')}]")
+        # Also print to stderr for Railway visibility
+        import sys
+        print(f"[TASK SUBMITTED] Task ID: {task.id}, Project: {project_id}, Queue: celery", file=sys.stderr, flush=True)
     except Exception as exc:
         error_msg = f"Failed to submit task to Celery queue: {str(exc)}"
         logger.error(f"{error_msg} [Request-ID: {getattr(request.state, 'request_id', 'N/A')}]", exc_info=True)
