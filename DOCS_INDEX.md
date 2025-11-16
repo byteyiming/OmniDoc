@@ -25,21 +25,17 @@ All documentation is now in the project root for easy access:
   - Development guide
 
 ### Production Deployment
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide (consolidated)
-  - Deployment strategy
-  - Architecture overview
-  - Backend deployment (Railway/Render/Fly.io)
-  - Frontend deployment (Vercel)
-  - Environment configuration
-  - Pre-deployment checklist
-  - Post-deployment verification
-  - Troubleshooting
+- **[RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md)** - Backend deployment on Railway
+  - Quick start guide
+  - Environment variables setup
+  - Celery worker configuration
+  - Custom domain setup
+  - Monitoring and troubleshooting
 
-- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Pre-deployment checklist
-  - Pre-deployment verification
-  - Security checklist
-  - Post-deployment verification
-  - Quick reference commands
+- **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)** - Frontend deployment on Vercel
+  - Vercel setup steps
+  - Environment variables
+  - Custom domain configuration
 
 - **[PRODUCTION_DOMAIN.md](PRODUCTION_DOMAIN.md)** - Production domain configuration
   - Domain: `https://omnidoc.info`
@@ -61,10 +57,6 @@ All documentation is now in the project root for easy access:
   - Environment variables
   - Custom domain configuration
 
-- **[DEPLOYMENT_WORKFLOW.md](DEPLOYMENT_WORKFLOW.md)** - How to update backend after deployment
-  - GitHub Actions setup
-  - Manual deployment steps
-  - Update workflow
 
 ### Frontend Documentation
 - **[FRONTEND.md](FRONTEND.md)** - Complete frontend guide
@@ -109,13 +101,6 @@ All documentation is now in the project root for easy access:
   - Phased implementation plan (6 phases)
   - Color palette, typography, accessibility, and more
 
-### Deployment Strategy
-- **[DEPLOYMENT_STRATEGY.md](DEPLOYMENT_STRATEGY.md)** - Deployment strategy guide
-  - When to deploy vs. when to update UI first
-  - Critical fixes before deployment
-  - Phased improvement timeline
-  - Post-deployment prioritization
-  - Best practices for iterative development
 
 ### Quality Assurance
 - **[docs/QUALITY_SCORING.md](docs/QUALITY_SCORING.md)** - Quality scoring system
@@ -139,20 +124,16 @@ All documentation is now in the project root for easy access:
 4. Code examples in the main README
 
 ### For DevOps/Deployment
-1. [DEPLOYMENT_STRATEGY.md](DEPLOYMENT_STRATEGY.md) - **Start here** - Deployment strategy
-2. [DEPLOYMENT.md](DEPLOYMENT.md) - Complete deployment guide (all platforms)
-3. [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) - Pre-deployment checklist
-4. [DEPLOYMENT_WORKFLOW.md](DEPLOYMENT_WORKFLOW.md) - How to update backend
-5. [NEON_SETUP.md](NEON_SETUP.md) - Database setup
-6. [UPSTASH_SETUP.md](UPSTASH_SETUP.md) - Redis setup
-7. [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md) - Frontend deployment
-8. [SECURITY.md](SECURITY.md) - Security configuration
-9. [MAINTENANCE.md](MAINTENANCE.md) - Maintenance procedures
+1. [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md) - **Start here** - Backend deployment on Railway
+2. [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md) - Frontend deployment on Vercel
+3. [NEON_SETUP.md](NEON_SETUP.md) - Database setup
+4. [UPSTASH_SETUP.md](UPSTASH_SETUP.md) - Redis setup
+5. [SECURITY.md](SECURITY.md) - Security configuration
+6. [MAINTENANCE.md](MAINTENANCE.md) - Maintenance procedures
 
 ### For UI/UX Development
 1. [UI_IMPROVEMENTS.md](UI_IMPROVEMENTS.md) - Complete UI improvement roadmap
 2. [FRONTEND.md](FRONTEND.md) - Frontend architecture and components
-3. [DEPLOYMENT_STRATEGY.md](DEPLOYMENT_STRATEGY.md) - When to implement UI improvements
 
 ## 🔍 Finding Information
 
@@ -160,7 +141,7 @@ All documentation is now in the project root for easy access:
 - **Install OmniDoc**: See [README.md - Quick Start](README.md#-quick-start)
 - **Configure the backend**: See [BACKEND.md](BACKEND.md)
 - **Understand the frontend**: See [FRONTEND.md](FRONTEND.md)
-- **Deploy to production**: See [DEPLOYMENT_STRATEGY.md](DEPLOYMENT_STRATEGY.md) first, then [DEPLOYMENT.md](DEPLOYMENT.md)
+- **Deploy to production**: See [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md) for backend and [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md) for frontend
 - **Improve the code**: See [CODE_IMPROVEMENTS.md](CODE_IMPROVEMENTS.md) - Complete improvement guide
 - **Improve the UI**: See [UI_IMPROVEMENTS.md](UI_IMPROVEMENTS.md) - Complete roadmap with 25 improvements
 - **Configure security**: See [SECURITY.md](SECURITY.md)
@@ -170,7 +151,8 @@ All documentation is now in the project root for easy access:
 - **Use the API**: See [BACKEND.md - API Endpoints](BACKEND.md#-api-endpoints)
 - **Understand quality scoring**: See [docs/QUALITY_SCORING.md](docs/QUALITY_SCORING.md)
 - **Customize quality rules**: See [docs/QUALITY_SCORING.md - Configuration](docs/QUALITY_SCORING.md#configuration) and `src/config/quality_rules.json`
-- **Plan deployment strategy**: See [DEPLOYMENT_STRATEGY.md](DEPLOYMENT_STRATEGY.md) - When to deploy vs. update UI
+- **Deploy backend**: See [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md)
+- **Deploy frontend**: See [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)
 
 ## 📝 Document Status
 

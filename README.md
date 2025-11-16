@@ -39,7 +39,7 @@ All generated from a simple description of your project idea!
 
 ## 🚀 Quick Start
 
-> **💡 Production Deployment**: Frontend is deployed on [Vercel](https://vercel.com), backend can be deployed to Railway/Render/Fly.io. See [Deployment Guide](DEPLOYMENT.md) for details.
+> **💡 Production Deployment**: Frontend is deployed on [Vercel](https://vercel.com), backend on [Railway](https://railway.app). See [Railway Deployment](RAILWAY_DEPLOYMENT.md) and [Vercel Deployment](VERCEL_DEPLOYMENT.md) for details.
 
 ### 1. Prerequisites
 
@@ -131,11 +131,8 @@ All documentation is in the project root:
 - **[MAINTENANCE.md](MAINTENANCE.md)** - Maintenance and monitoring guide
 
 ### Deployment Documentation
-- **[README_PRODUCTION.md](README_PRODUCTION.md)** - Production deployment guide
-- **[PRODUCTION_SETUP.md](PRODUCTION_SETUP.md)** - Detailed production setup
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide
-- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Pre-deployment checklist
-- **[DEPLOYMENT_STRATEGY.md](DEPLOYMENT_STRATEGY.md)** - Deployment strategy and recommendations
+- **[RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md)** - Backend deployment on Railway
+- **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)** - Frontend deployment on Vercel
 
 ### Development & Improvement
 - **[DOCS_INDEX.md](DOCS_INDEX.md)** - Documentation index and quick reference
@@ -385,7 +382,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - [Documentation Index](DOCS_INDEX.md) - Find what you need quickly
 - [Backend Documentation](BACKEND.md) - API and architecture
 - [Frontend Documentation](FRONTEND.md) - UI development
-- [Production Setup](PRODUCTION_SETUP.md) - Deployment guide
-- [Deployment Strategy](DEPLOYMENT_STRATEGY.md) - When to deploy vs. update
+- [Railway Deployment](RAILWAY_DEPLOYMENT.md) - Backend deployment guide
+- [Vercel Deployment](VERCEL_DEPLOYMENT.md) - Frontend deployment guide
 - [UI Improvements](UI_IMPROVEMENTS.md) - UI enhancement roadmap
 - [API Documentation](http://localhost:8000/docs) (when server is running)
