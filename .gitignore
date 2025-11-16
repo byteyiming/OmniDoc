@@ -2,12 +2,12 @@
 .env
 .env.local
 .env.test
-# Keep template files (but ignore actual .env.production with secrets)
-.env.production
+# Keep production env for private repos (will be tracked if repo is private)
 # Allow template files to be tracked
 !.env.example
 !.env.development
 !.env.production
+!.env.production.template
 
 # Python
 __pycache__/
