@@ -33,7 +33,6 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -282,16 +281,7 @@ class WildcardCORSMiddleware(BaseHTTPMiddleware):
             return response
         
         # Process actual request
-        try:
-            response = await call_next(request)
-        except Exception as e:
-            # Even for exceptions, add CORS headers if origin is allowed
-            logger.error(f"Request failed: {e}", exc_info=True)
-            response = Response(
-                content=f'{{"detail":"Internal server error"}}',
-                status_code=500,
-                media_type="application/json"
-            )
+        response = await call_next(request)
         
         # Add CORS headers if origin is allowed (for all responses including errors)
         if allowed and origin:
