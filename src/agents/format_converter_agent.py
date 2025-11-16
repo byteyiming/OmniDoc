@@ -153,7 +153,7 @@ class FormatConverterAgent(BaseAgent):
         
         self.file_manager = file_manager or FileManager(base_dir="docs")
         self.supported_formats = ["html", "pdf", "docx"]
-        logger.info(f"FormatConverterAgent initialized with supported formats: {self.supported_formats}")
+        logger.debug(f"FormatConverterAgent initialized with supported formats: {self.supported_formats}")
     
     def generate(self, markdown_content: str) -> str:
         """

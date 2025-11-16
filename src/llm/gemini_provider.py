@@ -58,7 +58,7 @@ class GeminiProvider(BaseLLMProvider):
             try:
                 self._model = genai.GenerativeModel(model_name)
                 self.default_model_name = model_name
-                logger.info(f"✅ Gemini model initialized: {model_name}")
+                logger.debug(f"✅ Gemini model initialized: {model_name}")
                 break
             except Exception as e:
                 logger.warning(f"⚠️  Failed to initialize {model_name}: {e}")

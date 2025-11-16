@@ -112,7 +112,7 @@ class BaseAgent(ABC):
         else:
             self.default_temperature = settings.default_temperature
         
-        logger.info(f"{self.agent_name} initialized with provider: {self.provider_name}, model: {self.model_name}, temperature: {self.default_temperature}")
+        logger.debug(f"{self.agent_name} initialized with provider: {self.provider_name}, model: {self.model_name}, temperature: {self.default_temperature}")
     
     def _get_async_rate_limiter(self) -> AsyncRequestQueue:
         """Get or create async rate limiter"""

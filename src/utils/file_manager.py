@@ -21,7 +21,7 @@ class FileManager:
         """
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"FileManager initialized with base_dir: {self.base_dir.absolute()}")
+        logger.debug(f"FileManager initialized with base_dir: {self.base_dir.absolute()}")
     
     def write_file(self, filepath: str, content: str, encoding: str = "utf-8") -> str:
         """

@@ -55,7 +55,7 @@ class WorkflowCoordinator:
                 # Try to get special agent class
                 special_agent_class = get_special_agent_class(definition.id, definition.special_key)
                 if special_agent_class:
-                    logger.info("Using special agent %s for document %s", special_agent_class.__name__, definition.id)
+                    logger.debug("Using special agent %s for document %s", special_agent_class.__name__, definition.id)
                     special_agent = special_agent_class(provider_name=self.provider_name)
                     agents[definition.id] = SpecialAgentAdapter(
                         agent=special_agent,

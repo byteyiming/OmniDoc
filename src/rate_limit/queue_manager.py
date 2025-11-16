@@ -41,7 +41,7 @@ class RequestQueue:
             max_daily_requests = 50  # Gemini free tier default
         self.daily_limit_manager = get_daily_limit_manager(max_daily_requests=max_daily_requests)
         
-        logger.info(
+        logger.debug(
             f"RequestQueue initialized: max_rate={self.max_rate}/min "
             f"(configured: {max_rate}/min, safety margin: {safety_margin}), "
             f"max_daily={max_daily_requests}/day"
