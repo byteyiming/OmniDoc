@@ -80,34 +80,114 @@ class ContextManager:
             return psycopg2.connect(self.db_url)
     
     def _put_connection(self, conn):
-        """Return a connection to the pool"""
+        """Return a connection to the pool with health check"""
+        if conn is None:
+            return
+        
+        # Check if connection is still valid before returning to pool
+        if conn.closed:
+            logger.debug("Connection is closed, not returning to pool")
+            return
+        
         if self._connection_pool is not None:
             try:
+                # Test connection before returning to pool
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1")
+                cursor.close()
                 self._connection_pool.putconn(conn)
-            except Exception:
-                # If pool is full or connection is bad, close it
+            except (psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.DatabaseError) as e:
+                # Connection is bad, close it instead of returning to pool
+                logger.warning(f"Connection is invalid, closing instead of returning to pool: {e}")
                 try:
                     conn.close()
                 except Exception:
                     pass
+            except Exception as e:
+                # Other errors - try to return to pool, but close if that fails
+                try:
+                    self._connection_pool.putconn(conn)
+                except Exception:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
     
     @contextmanager
     def _get_cursor(self):
-        """Context manager for database cursor"""
+        """Context manager for database cursor with connection retry"""
         conn = None
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            yield cursor
-            conn.commit()
-        except Exception:
-            if conn:
-                conn.rollback()
-            raise
-        finally:
-            if conn:
-                cursor.close()
-                self._put_connection(conn)
+        cursor = None
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                yield cursor
+                conn.commit()
+                break  # Success, exit retry loop
+            except (psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.DatabaseError) as e:
+                error_str = str(e).lower()
+                is_connection_error = any(keyword in error_str for keyword in [
+                    "connection", "closed", "ssl", "network", "timeout", "broken"
+                ])
+                
+                if conn:
+                    try:
+                        if not conn.closed:
+                            conn.rollback()
+                    except Exception:
+                        pass
+                    try:
+                        # Close bad connection
+                        if not conn.closed:
+                            conn.close()
+                    except Exception:
+                        pass
+                
+                if is_connection_error and attempt < max_retries - 1:
+                    logger.warning(
+                        f"Database connection error (attempt {attempt + 1}/{max_retries}): {e}. "
+                        f"Retrying with new connection..."
+                    )
+                    import time
+                    time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                    conn = None
+                    cursor = None
+                    continue
+                else:
+                    logger.error(f"Database error after {attempt + 1} attempts: {e}")
+                    raise
+            except Exception as e:
+                if conn:
+                    try:
+                        if not conn.closed:
+                            conn.rollback()
+                    except Exception:
+                        pass
+                logger.error(f"Unexpected error in database operation: {e}")
+                raise
+            finally:
+                if cursor:
+                    try:
+                        cursor.close()
+                    except Exception:
+                        pass
+                if conn:
+                    try:
+                        # Only return to pool if connection is still valid
+                        if not conn.closed:
+                            self._put_connection(conn)
+                        else:
+                            # Connection is closed, don't return to pool
+                            logger.debug("Connection was closed, not returning to pool")
+                    except Exception as e:
+                        logger.warning(f"Error returning connection to pool: {e}")
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
     
     def _initialize_database(self):
         """Create database tables if they don't exist"""
