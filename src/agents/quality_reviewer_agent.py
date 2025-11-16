@@ -107,7 +107,10 @@ class QualityReviewerAgent(BaseAgent):
                 scores_summary += f"- Section Completeness: {sections_data.get('completeness_score', 0):.1f}% ({sections_data.get('found_count', 0)}/{sections_data.get('required_count', 0)} sections found, passed: {sections_data.get('passed', False)})\n"
                 scores_summary += f"- Readability Score: {readability_data.get('readability_score', 0):.1f} ({readability_data.get('level', 'unknown')}, passed: {readability_data.get('passed', False)})\n"
                 if sections_data.get('missing_sections'):
-                    scores_summary += f"- Missing Sections: {', '.join([s.replace('^#+\\\\s+', '').replace('\\\\s+', ' ') for s in sections_data.get('missing_sections', [])[:3]])}\n"
+                    # Extract and clean missing sections (f-string can't contain backslashes)
+                    missing = sections_data.get('missing_sections', [])[:3]
+                    cleaned = [s.replace('^#+\\s+', '').replace('\\s+', ' ') for s in missing]
+                    scores_summary += f"- Missing Sections: {', '.join(cleaned)}\n"
                 
                 # Add auto_fail violations if present
                 auto_fail = score_data.get('auto_fail', {})
