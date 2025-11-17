@@ -238,6 +238,9 @@ class GeminiProvider(BaseLLMProvider):
         last_exception = None
         retry_delay = initial_retry_delay
         
+        # Log API call start
+        logger.info(f"🤖 Calling Google Gemini API (model: {model_name}, prompt length: {len(prompt)} chars, temperature: {temperature})")
+        
         for attempt in range(max_retries):
             try:
                 response = gen_model.generate_content(
@@ -246,7 +249,9 @@ class GeminiProvider(BaseLLMProvider):
                 )
                 # Success - reset retry delay for next call
                 if attempt > 0:
-                    logger.info(f"Gemini API call succeeded after {attempt} retries")
+                    logger.info(f"✅ Gemini API call succeeded after {attempt} retries")
+                else:
+                    logger.info(f"✅ Gemini API call completed successfully (response length: {len(response.text)} chars)")
                 return response.text
                 
             except google_exceptions.ResourceExhausted as e:

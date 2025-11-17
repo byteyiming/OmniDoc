@@ -184,7 +184,7 @@ class BaseAgent(ABC):
                 logger.debug(f"{self.agent_name} using phase {phase_number} model: {model}")
         
         model_to_use = model or self.model_name
-        logger.debug(f"{self.agent_name} calling LLM (model: {model_to_use}, prompt length: {len(prompt)}, temperature: {temperature})")
+        logger.info(f"🚀 {self.agent_name} calling LLM (model: {model_to_use}, prompt length: {len(prompt)} chars, temperature: {temperature})")
         
         # Define make_request to accept prompt as parameter so cache key includes prompt content
         def make_request(prompt_str: str):
@@ -277,7 +277,7 @@ class BaseAgent(ABC):
                     logger.debug(f"{self.agent_name} using phase {phase_to_use} model: {model}")
         
         model_to_use = model or self.model_name
-        logger.debug(f"{self.agent_name} calling LLM (async) (model: {model_to_use}, prompt length: {len(prompt)}, temperature: {temperature})")
+        logger.info(f"🚀 {self.agent_name} calling LLM (async) (model: {model_to_use}, prompt length: {len(prompt)} chars, temperature: {temperature})")
         
         # Define async make_request function
         async def make_request(prompt_str: str):

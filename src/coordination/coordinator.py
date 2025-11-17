@@ -310,7 +310,7 @@ Issues Identified:
         try:
             execution_plan = resolve_dependencies(selected_documents)
         except ValueError as exc:
-            logger.error("Invalid dependency graph: %s", exc)
+            logger.info("Invalid dependency graph resolved: %s", exc)
             raise
         
         total = len(execution_plan)
