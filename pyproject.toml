@@ -3,7 +3,7 @@ name = "docu-gen"
 version = "0.1.0"
 description = "AI-powered documentation generation system using Google Gemini API and AutoGen"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 authors = [
     {name = "DOCU-GEN Team"}
 ]
