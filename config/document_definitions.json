@@ -1,25 +1,23 @@
 {
-  "generated_at": "2025-11-13T14:39:39.934133+00:00",
-  "source": "/Users/yiming/dev_code/git/OmniDoc/JobTrackrAI_Document_Management_Template_v3.csv",
   "documents": [
     {
       "id": "interaction_flows",
       "name": "Interaction / Flow Diagrams",
-      "category": "产品设计 / 功能",
-      "description": "用户流程、系统交互",
+      "category": "Product Design / Features",
+      "description": "User flows and system interactions",
       "prompt_key": "interaction_flows_prompt",
       "agent_class": "generic",
       "dependencies": [
         "ui_mockups",
         "fsd"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "UX/UI Designer / Dev Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -28,20 +26,20 @@
     {
       "id": "ui_style_guide",
       "name": "UI Style Guide",
-      "category": "产品设计 / 功能",
-      "description": "颜色、字体、组件规范",
+      "category": "Product Design / Features",
+      "description": "Color, font, and component specifications",
       "prompt_key": "ui_style_guide_prompt",
       "agent_class": "generic",
       "dependencies": [
         "ui_mockups"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "UX/UI Designer",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -50,21 +48,21 @@
     {
       "id": "fsd",
       "name": "FSD (Functional Spec Doc)",
-      "category": "产品设计 / 功能",
-      "description": "功能实现细节",
+      "category": "Product Design / Features",
+      "description": "Functional implementation details",
       "prompt_key": "fsd_prompt",
       "agent_class": "generic",
       "dependencies": [
         "prd",
         "tad"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Product Manager / Dev Lead",
-      "status": "未开始",
-      "audience": "团队",
+      "status": "Not Started",
+      "audience": "Team",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -73,21 +71,21 @@
     {
       "id": "onboarding_flow",
       "name": "Onboarding Flow",
-      "category": "产品设计 / 功能",
-      "description": "用户注册、初次使用流程",
+      "category": "Product Design / Features",
+      "description": "User registration and onboarding flow",
       "prompt_key": "onboarding_flow_prompt",
       "agent_class": "generic",
       "dependencies": [
         "prd",
         "ui_mockups"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "UX/UI Designer / PM",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -96,21 +94,21 @@
     {
       "id": "prd",
       "name": "PRD (Product Requirements Doc)",
-      "category": "产品设计 / 功能",
-      "description": "产品功能详细说明",
+      "category": "Product Design / Features",
+      "description": "Detailed product feature specifications",
       "prompt_key": "prd_prompt",
       "agent_class": "generic",
       "dependencies": [
         "requirements",
         "feature_roadmap"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Product Manager",
-      "status": "未开始",
-      "audience": "个人",
+      "status": "Not Started",
+      "audience": "Individual",
       "stage": {
         "label": "MVP",
-        "notes": "MVP 阶段必备核心文档"
+        "notes": "Essential core document for MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -119,21 +117,21 @@
     {
       "id": "tad",
       "name": "TAD (Technical Architecture Doc)",
-      "category": "产品设计 / 功能",
-      "description": "技术架构设计",
+      "category": "Product Design / Features",
+      "description": "Technical architecture design",
       "prompt_key": "tad_prompt",
       "agent_class": "generic",
       "dependencies": [
         "database_schema",
         "api_documentation"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Tech Lead / Dev Lead",
-      "status": "未开始",
-      "audience": "团队",
+      "status": "Not Started",
+      "audience": "Team",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -142,20 +140,20 @@
     {
       "id": "ui_mockups",
       "name": "UI Mockups / Mockups Docs",
-      "category": "产品设计 / 功能",
-      "description": "页面设计和布局",
+      "category": "Product Design / Features",
+      "description": "Page design and layout",
       "prompt_key": "ui_mockups_prompt",
       "agent_class": "generic",
       "dependencies": [
         "prd"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "UX/UI Designer",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -164,21 +162,21 @@
     {
       "id": "accessibility_plan",
       "name": "Accessibility Plan / ADA Compliance",
-      "category": "安全 / 合规",
-      "description": "无障碍功能设计",
+      "category": "Security / Compliance",
+      "description": "Accessibility feature design",
       "prompt_key": "accessibility_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "ui_style_guide",
         "ui_mockups"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "UX/UI Designer / PM",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -187,21 +185,21 @@
     {
       "id": "eol_policy",
       "name": "End-of-Life (EOL) Policy",
-      "category": "安全 / 合规",
-      "description": "产品或功能退役策略",
+      "category": "Security / Compliance",
+      "description": "Product or feature end-of-life strategy",
       "prompt_key": "eol_policy_prompt",
       "agent_class": "generic",
       "dependencies": [
         "feature_roadmap",
         "api_versioning_policy"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "PM / Dev Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -210,21 +208,21 @@
     {
       "id": "localization_plan",
       "name": "Localization / Internationalization Plan",
-      "category": "安全 / 合规",
-      "description": "多语言支持策略",
+      "category": "Security / Compliance",
+      "description": "Localization and internationalization strategy",
       "prompt_key": "localization_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "ui_mockups",
         "prd"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "UX/UI Designer / Dev Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -233,20 +231,20 @@
     {
       "id": "data_retention_policy",
       "name": "Data Retention & Archiving Policy",
-      "category": "安全 / 合规",
-      "description": "数据保留与归档",
+      "category": "Security / Compliance",
+      "description": "Data retention and archiving",
       "prompt_key": "data_retention_policy_prompt",
       "agent_class": "generic",
       "dependencies": [
         "database_schema"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "PM / DevOps",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -255,21 +253,21 @@
     {
       "id": "incident_response_plan",
       "name": "Incident Response Plan",
-      "category": "安全 / 合规",
-      "description": "安全/系统事件响应",
+      "category": "Security / Compliance",
+      "description": "Security/system incident response",
       "prompt_key": "incident_response_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "security_plan",
         "monitoring_logging_plan"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Security Lead / DevOps",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -278,20 +276,20 @@
     {
       "id": "terms_of_service",
       "name": "Legal / Terms of Service (ToS)",
-      "category": "安全 / 合规",
-      "description": "用户协议与法律条款",
+      "category": "Security / Compliance",
+      "description": "User agreement and legal terms",
       "prompt_key": "terms_of_service_prompt",
       "agent_class": "generic",
       "dependencies": [
         "privacy_policy"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Legal",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -300,20 +298,20 @@
     {
       "id": "privacy_policy",
       "name": "Privacy Policy / GDPR Compliance",
-      "category": "安全 / 合规",
-      "description": "用户隐私及法规合规",
+      "category": "Security / Compliance",
+      "description": "User privacy and regulatory compliance",
       "prompt_key": "privacy_policy_prompt",
       "agent_class": "generic",
       "dependencies": [
         "security_plan"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Legal / PM",
-      "status": "未开始",
-      "audience": "个人",
+      "status": "Not Started",
+      "audience": "Individual",
       "stage": {
         "label": "MVP",
-        "notes": "MVP 阶段必备核心文档"
+        "notes": "Essential core document for MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -322,21 +320,21 @@
     {
       "id": "security_plan",
       "name": "Security Plan",
-      "category": "安全 / 合规",
-      "description": "系统安全策略",
+      "category": "Security / Compliance",
+      "description": "System security strategy",
       "prompt_key": "SECURITY_PLAN_PROMPT",
       "agent_class": "generic",
       "dependencies": [
         "tad",
         "cicd_doc"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Security Lead / DevOps",
-      "status": "未开始",
-      "audience": "个人",
+      "status": "Not Started",
+      "audience": "Individual",
       "stage": {
         "label": "MVP",
-        "notes": "MVP 阶段必备核心文档"
+        "notes": "Essential core document for MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -345,20 +343,20 @@
     {
       "id": "api_versioning_policy",
       "name": "API Versioning & Deprecation Policy",
-      "category": "技术 / 开发",
-      "description": "API升级与退役策略",
+      "category": "Technical / Development",
+      "description": "API versioning and deprecation strategy",
       "prompt_key": "api_versioning_policy_prompt",
       "agent_class": "generic",
       "dependencies": [
         "api_documentation"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Backend Dev / Tech Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -367,21 +365,21 @@
     {
       "id": "cicd_doc",
       "name": "CI/CD Pipeline Doc",
-      "category": "技术 / 开发",
-      "description": "持续集成/部署流程",
+      "category": "Technical / Development",
+      "description": "CI/CD pipeline and deployment process",
       "prompt_key": "cicd_doc_prompt",
       "agent_class": "generic",
       "dependencies": [
         "developer_guide",
         "tad"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "DevOps",
-      "status": "未开始",
-      "audience": "团队",
+      "status": "Not Started",
+      "audience": "Team",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -390,21 +388,21 @@
     {
       "id": "configuration_management_plan",
       "name": "Configuration Management Plan",
-      "category": "技术 / 开发",
-      "description": "系统配置与版本管理",
+      "category": "Technical / Development",
+      "description": "System configuration and version management",
       "prompt_key": "configuration_management_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "developer_guide",
         "cicd_doc"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "DevOps / Tech Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -413,21 +411,21 @@
     {
       "id": "deployment_plan",
       "name": "Deployment Plan",
-      "category": "技术 / 开发",
-      "description": "上线与发布计划",
+      "category": "Technical / Development",
+      "description": "Deployment and release plan",
       "prompt_key": "deployment_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "cicd_doc",
         "tad"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "DevOps / Dev Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -436,20 +434,20 @@
     {
       "id": "scalability_plan",
       "name": "Scalability Plan",
-      "category": "技术 / 开发",
-      "description": "系统扩展方案",
+      "category": "Technical / Development",
+      "description": "System scalability plan",
       "prompt_key": "scalability_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "tad"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Tech Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -458,21 +456,21 @@
     {
       "id": "technical_debt_log",
       "name": "Technical Debt Log / Refactoring Plan",
-      "category": "技术 / 开发",
-      "description": "技术欠债记录",
+      "category": "Technical / Development",
+      "description": "Technical debt log and refactoring plan",
       "prompt_key": "technical_debt_log_prompt",
       "agent_class": "generic",
       "dependencies": [
         "tad",
         "fsd"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Dev Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -481,18 +479,18 @@
     {
       "id": "api_documentation",
       "name": "API Documentation",
-      "category": "技术 / 开发",
-      "description": "API接口说明",
+      "category": "Technical / Development",
+      "description": "API documentation and interface specifications",
       "prompt_key": "API_DOCUMENTATION_PROMPT",
       "agent_class": "generic",
       "dependencies": [],
-      "priority": "高",
+      "priority": "High",
       "owner": "Backend Dev",
-      "status": "未开始",
-      "audience": "个人",
+      "status": "Not Started",
+      "audience": "Individual",
       "stage": {
         "label": "MVP",
-        "notes": "MVP 阶段必备核心文档"
+        "notes": "Essential core document for MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -501,18 +499,18 @@
     {
       "id": "database_schema",
       "name": "Database Schema",
-      "category": "技术 / 开发",
-      "description": "数据库设计",
+      "category": "Technical / Development",
+      "description": "Database schema design",
       "prompt_key": "DATABASE_SCHEMA_PROMPT",
       "agent_class": "generic",
       "dependencies": [],
-      "priority": "高",
+      "priority": "High",
       "owner": "Backend Dev / DB Admin",
-      "status": "未开始",
-      "audience": "个人",
+      "status": "Not Started",
+      "audience": "Individual",
       "stage": {
         "label": "MVP",
-        "notes": "MVP 阶段必备核心文档"
+        "notes": "Essential core document for MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -521,21 +519,21 @@
     {
       "id": "developer_guide",
       "name": "Developer Guide / README",
-      "category": "技术 / 开发",
-      "description": "开发指南和依赖说明",
+      "category": "Technical / Development",
+      "description": "Developer guide and dependency documentation",
       "prompt_key": "developer_guide_prompt",
       "agent_class": "generic",
       "dependencies": [
         "api_documentation",
         "database_schema"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Dev Lead",
-      "status": "未开始",
-      "audience": "个人",
+      "status": "Not Started",
+      "audience": "Individual",
       "stage": {
         "label": "MVP",
-        "notes": "MVP 阶段必备核心文档"
+        "notes": "Essential core document for MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -544,21 +542,21 @@
     {
       "id": "monitoring_logging_plan",
       "name": "Monitoring & Logging Plan",
-      "category": "技术 / 开发",
-      "description": "系统监控和日志策略",
+      "category": "Technical / Development",
+      "description": "System monitoring and logging strategy",
       "prompt_key": "monitoring_logging_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "tad",
         "cicd_doc"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "DevOps / QA",
-      "status": "未开始",
-      "audience": "团队",
+      "status": "Not Started",
+      "audience": "Team",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -567,21 +565,21 @@
     {
       "id": "ab_testing_docs",
       "name": "Experimentation / A/B Testing Docs",
-      "category": "测试 / QA / 支持",
-      "description": "功能优化实验设计",
+      "category": "Testing / QA / Support",
+      "description": "A/B testing and experimentation design",
       "prompt_key": "ab_testing_docs_prompt",
       "agent_class": "generic",
       "dependencies": [
         "feature_roadmap",
         "prd"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Product Manager / Data Analyst",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -590,18 +588,18 @@
     {
       "id": "knowledge_base",
       "name": "Knowledge Base",
-      "category": "测试 / QA / 支持",
-      "description": "常见问题和帮助文档",
+      "category": "Testing / QA / Support",
+      "description": "Knowledge base and FAQ documentation",
       "prompt_key": "knowledge_base_prompt",
       "agent_class": "generic",
       "dependencies": [],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Support Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -610,21 +608,21 @@
     {
       "id": "support_training_doc",
       "name": "Support Team Training Document",
-      "category": "测试 / QA / 支持",
-      "description": "客服培训材料",
+      "category": "Testing / QA / Support",
+      "description": "Support team training materials",
       "prompt_key": "support_training_doc_prompt",
       "agent_class": "generic",
       "dependencies": [
         "support_playbook",
         "user_support_doc"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Support Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -633,21 +631,21 @@
     {
       "id": "support_playbook",
       "name": "Support Playbook",
-      "category": "测试 / QA / 支持",
-      "description": "客服处理流程",
+      "category": "Testing / QA / Support",
+      "description": "Support playbook and customer service procedures",
       "prompt_key": "support_playbook_prompt",
       "agent_class": "generic",
       "dependencies": [
         "user_support_doc",
         "test_plan"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Support Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -656,21 +654,21 @@
     {
       "id": "test_plan",
       "name": "Test Plan Document",
-      "category": "测试 / QA / 支持",
-      "description": "测试用例、方法和流程",
+      "category": "Testing / QA / Support",
+      "description": "Test plan with test cases, methods, and procedures",
       "prompt_key": "TEST_PLAN_PROMPT",
       "agent_class": "generic",
       "dependencies": [
         "prd",
         "fsd"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "QA",
-      "status": "未开始",
-      "audience": "个人",
+      "status": "Not Started",
+      "audience": "Individual",
       "stage": {
         "label": "MVP",
-        "notes": "MVP 阶段必备核心文档"
+        "notes": "Essential core document for MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -679,21 +677,21 @@
     {
       "id": "user_feedback_plan",
       "name": "User Feedback Plan",
-      "category": "测试 / QA / 支持",
-      "description": "用户反馈收集与分析",
+      "category": "Testing / QA / Support",
+      "description": "User feedback collection and analysis plan",
       "prompt_key": "user_feedback_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "knowledge_base",
         "test_plan"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Product Manager / UX",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -702,21 +700,21 @@
     {
       "id": "user_support_doc",
       "name": "User Support Document",
-      "category": "测试 / QA / 支持",
-      "description": "用户支持指南",
+      "category": "Testing / QA / Support",
+      "description": "User support documentation",
       "prompt_key": "user_support_doc_prompt",
       "agent_class": "generic",
       "dependencies": [
         "prd",
         "knowledge_base"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Support Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -725,8 +723,8 @@
     {
       "id": "gtm_strategy",
       "name": "Go-To-Market (GTM) Strategy",
-      "category": "用户 / 产品分析",
-      "description": "上市推广策略",
+      "category": "User / Product Analytics",
+      "description": "Go-to-market (GTM) strategy",
       "prompt_key": "gtm_strategy_prompt",
       "agent_class": "special",
       "special_key": "marketing_plan",
@@ -734,13 +732,13 @@
         "feature_roadmap",
         "business_model"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Product Manager / Marketing",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -749,21 +747,21 @@
     {
       "id": "user_analytics",
       "name": "User Analytics / Behavior Tracking Doc",
-      "category": "用户 / 产品分析",
-      "description": "用户行为数据分析方法",
+      "category": "User / Product Analytics",
+      "description": "User analytics and behavior tracking documentation",
       "prompt_key": "user_analytics_prompt",
       "agent_class": "generic",
       "dependencies": [
         "prd",
         "dashboard_metrics"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Data Analyst / PM",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -772,20 +770,20 @@
     {
       "id": "dashboard_metrics",
       "name": "Dashboard Metrics Specification",
-      "category": "用户 / 产品分析",
-      "description": "仪表盘数据指标",
+      "category": "User / Product Analytics",
+      "description": "Dashboard metrics specification",
       "prompt_key": "dashboard_metrics_prompt",
       "agent_class": "generic",
       "dependencies": [
         "kpi_metrics_doc"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "UX/UI Designer / Data Analyst",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -794,20 +792,20 @@
     {
       "id": "kpi_metrics_doc",
       "name": "KPIs / Metrics Document",
-      "category": "用户 / 产品分析",
-      "description": "产品指标和分析方法",
+      "category": "User / Product Analytics",
+      "description": "KPIs and metrics documentation",
       "prompt_key": "kpi_metrics_doc_prompt",
       "agent_class": "generic",
       "dependencies": [
         "feature_roadmap"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Product Manager / Data Analyst",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -816,21 +814,21 @@
     {
       "id": "release_notes",
       "name": "Release Notes / Version History",
-      "category": "用户 / 产品分析",
-      "description": "版本功能更新与修复记录",
+      "category": "User / Product Analytics",
+      "description": "Release notes and version history",
       "prompt_key": "release_notes_prompt",
       "agent_class": "generic",
       "dependencies": [
         "prd",
         "fsd"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Product Manager / Dev Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -839,21 +837,21 @@
     {
       "id": "third_party_integrations",
       "name": "Third-Party Integration Documentation",
-      "category": "用户 / 产品分析",
-      "description": "第三方服务集成说明",
+      "category": "User / Product Analytics",
+      "description": "Third-party integration documentation",
       "prompt_key": "third_party_integrations_prompt",
       "agent_class": "generic",
       "dependencies": [
         "api_documentation",
         "tad"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Dev Lead / Backend Dev",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -862,21 +860,21 @@
     {
       "id": "bcp",
       "name": "Business Continuity Plan (BCP)",
-      "category": "运维 / 高级管理",
-      "description": "灾难或停机业务连续性",
+      "category": "Operations / Advanced Management",
+      "description": "Business continuity plan for disasters or downtime",
       "prompt_key": "bcp_prompt",
       "agent_class": "generic",
       "dependencies": [
         "risk_management_plan",
         "backup_recovery_plan"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "PM / DevOps",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -885,21 +883,21 @@
     {
       "id": "cloud_infrastructure_doc",
       "name": "Cloud Infrastructure / Cost Management Doc",
-      "category": "运维 / 高级管理",
-      "description": "云资源架构及成本优化",
+      "category": "Operations / Advanced Management",
+      "description": "Cloud infrastructure and cost management",
       "prompt_key": "cloud_infrastructure_doc_prompt",
       "agent_class": "generic",
       "dependencies": [
         "tad",
         "scalability_plan"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "DevOps / Tech Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -908,21 +906,21 @@
     {
       "id": "performance_optimization_doc",
       "name": "Performance Tuning & Optimization Doc",
-      "category": "运维 / 高级管理",
-      "description": "性能优化方案",
+      "category": "Operations / Advanced Management",
+      "description": "Performance tuning and optimization",
       "prompt_key": "performance_optimization_doc_prompt",
       "agent_class": "generic",
       "dependencies": [
         "tad",
         "monitoring_logging_plan"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "DevOps / Tech Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -931,21 +929,21 @@
     {
       "id": "sla",
       "name": "SLA / Service Level Agreement",
-      "category": "运维 / 高级管理",
-      "description": "可用性和支持承诺",
+      "category": "Operations / Advanced Management",
+      "description": "SLA and service level agreement",
       "prompt_key": "sla_prompt",
       "agent_class": "generic",
       "dependencies": [
         "business_model",
         "maintenance_plan"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "PM / Legal",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -954,21 +952,21 @@
     {
       "id": "vendor_management_docs",
       "name": "Vendor / Supplier Management Docs",
-      "category": "运维 / 高级管理",
-      "description": "第三方服务与合同管理",
+      "category": "Operations / Advanced Management",
+      "description": "Vendor and supplier management documentation",
       "prompt_key": "vendor_management_docs_prompt",
       "agent_class": "generic",
       "dependencies": [
         "sla",
         "bcp"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "PM / Legal",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -977,21 +975,21 @@
     {
       "id": "backup_recovery_plan",
       "name": "Backup & Recovery Plan",
-      "category": "运维 / 高级管理",
-      "description": "数据备份与恢复流程",
+      "category": "Operations / Advanced Management",
+      "description": "Backup and recovery plan",
       "prompt_key": "backup_recovery_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "database_schema",
         "configuration_management_plan"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "DevOps",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1000,21 +998,21 @@
     {
       "id": "maintenance_plan",
       "name": "Maintenance Plan",
-      "category": "运维 / 高级管理",
-      "description": "系统维护流程",
+      "category": "Operations / Advanced Management",
+      "description": "Maintenance plan and procedures",
       "prompt_key": "maintenance_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "cicd_doc",
         "monitoring_logging_plan"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "DevOps",
-      "status": "未开始",
-      "audience": "团队",
+      "status": "Not Started",
+      "audience": "Team",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1023,21 +1021,21 @@
     {
       "id": "change_management_plan",
       "name": "Change Management Plan",
-      "category": "项目管理 / 规划",
-      "description": "功能或架构变更流程",
+      "category": "Project Management / Planning",
+      "description": "Change management plan",
       "prompt_key": "change_management_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "pm_management_doc",
         "feature_roadmap"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Product Manager / Dev Lead",
-      "status": "未开始",
-      "audience": "团队",
+      "status": "Not Started",
+      "audience": "Team",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1046,8 +1044,8 @@
     {
       "id": "risk_management_plan",
       "name": "Risk Management / Mitigation Plan",
-      "category": "项目管理 / 规划",
-      "description": "风险分析与缓解措施",
+      "category": "Project Management / Planning",
+      "description": "Risk management and mitigation plan",
       "prompt_key": "risk_management_plan_prompt",
       "agent_class": "special",
       "special_key": "risk_management_plan",
@@ -1056,13 +1054,13 @@
         "requirements",
         "business_model"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "PM / QA / Dev Lead",
-      "status": "未开始",
-      "audience": "团队",
+      "status": "Not Started",
+      "audience": "Team",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1071,20 +1069,20 @@
     {
       "id": "stakeholders_doc",
       "name": "Stakeholders Document",
-      "category": "项目管理 / 规划",
-      "description": "利益相关方列表及角色",
+      "category": "Project Management / Planning",
+      "description": "Stakeholders document and roles",
       "prompt_key": "stakeholders_doc_prompt",
       "agent_class": "generic",
       "dependencies": [
         "business_model"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Product Manager",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1093,20 +1091,20 @@
     {
       "id": "business_model",
       "name": "Business Model",
-      "category": "项目管理 / 规划",
-      "description": "商业模式、盈利策略",
+      "category": "Project Management / Planning",
+      "description": "Business model and revenue strategy",
       "prompt_key": "BUSINESS_MODEL_PROMPT",
       "agent_class": "generic",
       "dependencies": [
         "market_research"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Product Manager / CEO",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1115,8 +1113,8 @@
     {
       "id": "feature_roadmap",
       "name": "Feature Roadmap",
-      "category": "项目管理 / 规划",
-      "description": "功能迭代计划",
+      "category": "Project Management / Planning",
+      "description": "Feature roadmap and iteration plan",
       "prompt_key": "feature_roadmap_prompt",
       "agent_class": "special",
       "special_key": "feature_roadmap",
@@ -1125,13 +1123,13 @@
         "project_charter",
         "business_model"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Product Manager",
-      "status": "未开始",
-      "audience": "团队",
+      "status": "Not Started",
+      "audience": "Team",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1140,21 +1138,21 @@
     {
       "id": "pm_management_doc",
       "name": "PM Management Doc",
-      "category": "项目管理 / 规划",
-      "description": "项目管理流程、职责分工",
+      "category": "Project Management / Planning",
+      "description": "PM management documentation and processes",
       "prompt_key": "pm_management_doc_prompt",
       "agent_class": "generic",
       "dependencies": [
         "project_charter",
         "stakeholders_doc"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Product Manager",
-      "status": "未开始",
-      "audience": "团队",
+      "status": "Not Started",
+      "audience": "Team",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1163,8 +1161,8 @@
     {
       "id": "project_charter",
       "name": "Project Charter",
-      "category": "项目管理 / 规划",
-      "description": "产品目标、范围、里程碑",
+      "category": "Project Management / Planning",
+      "description": "Project charter with goals, scope, and milestones",
       "prompt_key": "PROJECT_CHARTER_PROMPT",
       "agent_class": "generic",
       "dependencies": [
@@ -1172,13 +1170,13 @@
         "market_research",
         "business_model"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Product Manager",
-      "status": "未开始",
-      "audience": "个人",
+      "status": "Not Started",
+      "audience": "Individual",
       "stage": {
         "label": "MVP",
-        "notes": "MVP 阶段必备核心文档"
+        "notes": "Essential core document for MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1187,8 +1185,8 @@
     {
       "id": "requirements",
       "name": "Requirements Document",
-      "category": "项目管理 / 规划",
-      "description": "系统功能和需求说明",
+      "category": "Project Management / Planning",
+      "description": "Requirements document with system functions and requirements",
       "prompt_key": "REQUIREMENTS_ANALYST_PROMPT",
       "agent_class": "special",
       "dependencies": [
@@ -1196,13 +1194,13 @@
         "market_research",
         "project_charter"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "Product Manager / BA",
-      "status": "未开始",
-      "audience": "个人",
+      "status": "Not Started",
+      "audience": "Individual",
       "stage": {
         "label": "MVP",
-        "notes": "MVP 阶段必备核心文档"
+        "notes": "Essential core document for MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1212,8 +1210,8 @@
     {
       "id": "wbs",
       "name": "Work Breakdown Structure (WBS)",
-      "category": "项目管理 / 规划",
-      "description": "任务拆分、进度计划",
+      "category": "Project Management / Planning",
+      "description": "Work breakdown structure (WBS) with task breakdown and schedule",
       "prompt_key": "wbs_prompt",
       "agent_class": "generic",
       "dependencies": [
@@ -1221,13 +1219,13 @@
         "feature_roadmap",
         "requirements"
       ],
-      "priority": "高",
+      "priority": "High",
       "owner": "PM / Product Manager",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1236,21 +1234,21 @@
     {
       "id": "data_governance_policy",
       "name": "Data Governance / Data Quality Policy",
-      "category": "高级 / 可选 / 补充",
-      "description": "数据标准化、准确性、完整性",
+      "category": "Advanced / Optional / Supplementary",
+      "description": "Data governance and data quality policy",
       "prompt_key": "data_governance_policy_prompt",
       "agent_class": "generic",
       "dependencies": [
         "database_schema",
         "user_analytics"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Data Analyst / PM",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1259,21 +1257,21 @@
     {
       "id": "feature_flag_docs",
       "name": "Experimentation / Feature Flag Docs",
-      "category": "高级 / 可选 / 补充",
-      "description": "功能实验和开关管理",
+      "category": "Advanced / Optional / Supplementary",
+      "description": "Feature flag and experimentation documentation",
       "prompt_key": "feature_flag_docs_prompt",
       "agent_class": "generic",
       "dependencies": [
         "prd",
         "ab_testing_docs"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Dev Lead / PM",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1282,21 +1280,21 @@
     {
       "id": "innovation_plan",
       "name": "Innovation / R&D Plan",
-      "category": "高级 / 可选 / 补充",
-      "description": "新功能或技术探索路线",
+      "category": "Advanced / Optional / Supplementary",
+      "description": "Innovation and R&D plan",
       "prompt_key": "innovation_plan_prompt",
       "agent_class": "generic",
       "dependencies": [
         "feature_roadmap",
         "technical_audit"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Product Manager / Tech Lead",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1305,18 +1303,18 @@
     {
       "id": "market_research",
       "name": "Market Research & Competitive Analysis",
-      "category": "高级 / 可选 / 补充",
-      "description": "市场和竞品分析",
+      "category": "Advanced / Optional / Supplementary",
+      "description": "Market research and competitive analysis",
       "prompt_key": "market_research_prompt",
       "agent_class": "generic",
       "dependencies": [],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Product Manager / Marketing",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
       "must_have": "",
       "usage_frequency": "",
@@ -1325,22 +1323,268 @@
     {
       "id": "technical_audit",
       "name": "Technical Audit / Compliance Audit Reports",
-      "category": "高级 / 可选 / 补充",
-      "description": "技术与合规审计",
+      "category": "Advanced / Optional / Supplementary",
+      "description": "Technical audit and compliance audit reports",
       "prompt_key": "technical_audit_prompt",
       "agent_class": "generic",
       "dependencies": [
         "security_plan",
         "privacy_policy"
       ],
-      "priority": "中",
+      "priority": "Medium",
       "owner": "Security Lead / Legal",
-      "status": "未开始",
-      "audience": "混合",
+      "status": "Not Started",
+      "audience": "Mixed",
       "stage": {
-        "label": "产品成熟 / 后续迭代",
-        "notes": "可在 MVP 后阶段完善"
+        "label": "Product Mature / Subsequent Iteration",
+        "notes": "Can be refined after MVP phase"
       },
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "business_overview",
+      "name": "Business Overview",
+      "description": "Introduces the company, products, market, and business model.",
+      "category": "business",
+      "stage": "MVP",
+      "owner": "Business Owner",
+      "priority": "High",
+      "dependencies": [
+        "market_research"
+      ],
+      "agent_class": "special",
+      "special_key": "business_overview",
+      "prompt_key": "business_overview_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "operations_plan",
+      "name": "Operations Plan",
+      "description": "Daily operations, staffing, SOPs, and supply chain.",
+      "category": "business",
+      "stage": "MVP",
+      "owner": "Operations Manager",
+      "priority": "High",
+      "dependencies": [
+        "business_overview"
+      ],
+      "agent_class": "special",
+      "special_key": "operations_plan",
+      "prompt_key": "operations_plan_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "market_research",
+      "name": "Market Research Summary",
+      "description": "Market research summary, including market size, customer personas, trends, and competitor analysis.",
+      "category": "business",
+      "stage": "MVP",
+      "owner": "Marketing",
+      "priority": "High",
+      "dependencies": [],
+      "agent_class": "special",
+      "special_key": "market_research",
+      "prompt_key": "market_research_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "financial_model",
+      "name": "Financial Model Framework",
+      "description": "Financial model framework, including costs, revenue, profit, and cash flow projections.",
+      "category": "business",
+      "stage": "MVP",
+      "owner": "Finance",
+      "priority": "High",
+      "dependencies": [
+        "business_overview",
+        "operations_plan"
+      ],
+      "agent_class": "special",
+      "special_key": "financial_model",
+      "prompt_key": "financial_model_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "licensing_checklist",
+      "name": "Licensing / Permits Checklist",
+      "description": "A checklist of industry-specific permits and licenses required for the business.",
+      "category": "legal",
+      "stage": "MVP",
+      "owner": "Admin",
+      "priority": "High",
+      "dependencies": [
+        "business_overview"
+      ],
+      "agent_class": "special",
+      "special_key": "licensing_checklist",
+      "prompt_key": "licensing_checklist_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "sop",
+      "name": "Standard Operating Procedures (SOP)",
+      "description": "Standard Operating Procedures (SOPs), the 'operations bible' for the business.",
+      "category": "operations",
+      "stage": "MVP",
+      "owner": "Operations Manager",
+      "priority": "High",
+      "dependencies": [
+        "operations_plan"
+      ],
+      "agent_class": "special",
+      "special_key": "sop",
+      "prompt_key": "sop_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "hr_staffing_guide",
+      "name": "HR & Staffing Guide",
+      "description": "HR & Staffing Guide, including structure, hiring, training, and performance.",
+      "category": "operations",
+      "stage": "MVP",
+      "owner": "HR",
+      "priority": "Medium",
+      "dependencies": [
+        "operations_plan"
+      ],
+      "agent_class": "special",
+      "special_key": "hr_staffing_guide",
+      "prompt_key": "hr_staffing_guide_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "marketing_plan",
+      "name": "Marketing & Branding Plan",
+      "description": "Marketing & Branding Plan, including positioning, channels, strategy, and a 90-day action plan.",
+      "category": "business",
+      "stage": "MVP",
+      "owner": "Marketing",
+      "priority": "High",
+      "dependencies": [
+        "business_overview",
+        "market_research"
+      ],
+      "agent_class": "special",
+      "special_key": "marketing_plan",
+      "prompt_key": "marketing_plan_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "risk_management_plan",
+      "name": "Risk Assessment & Mitigation",
+      "description": "Risk Assessment & Mitigation, applicable to all physical businesses.",
+      "category": "strategy",
+      "stage": "MVP",
+      "owner": "PM",
+      "priority": "Medium",
+      "dependencies": [
+        "business_overview",
+        "operations_plan",
+        "financial_model"
+      ],
+      "agent_class": "special",
+      "special_key": "risk_management_plan",
+      "prompt_key": "risk_management_plan_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "customer_experience_playbook",
+      "name": "Customer Experience Playbook",
+      "description": "Customer Experience Playbook, for service-based businesses, retail, etc.",
+      "category": "operations",
+      "stage": "MVP",
+      "owner": "Customer Service",
+      "priority": "Medium",
+      "dependencies": [
+        "sop",
+        "operations_plan"
+      ],
+      "agent_class": "special",
+      "special_key": "customer_experience_playbook",
+      "prompt_key": "customer_experience_playbook_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "growth_expansion_plan",
+      "name": "Growth & Expansion Plan",
+      "description": "Growth & Expansion Plan, including new locations, product line expansion, and standardization.",
+      "category": "strategy",
+      "stage": "Growth",
+      "owner": "Business Owner",
+      "priority": "Low",
+      "dependencies": [
+        "business_overview",
+        "financial_model"
+      ],
+      "agent_class": "special",
+      "special_key": "growth_expansion_plan",
+      "prompt_key": "growth_expansion_plan_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
+      "must_have": "",
+      "usage_frequency": "",
+      "notes": ""
+    },
+    {
+      "id": "execution_roadmap",
+      "name": "12-Month Execution Roadmap",
+      "description": "12-Month Execution Roadmap, the key document for turning an idea into reality.",
+      "category": "strategy",
+      "stage": "MVP",
+      "owner": "PM",
+      "priority": "High",
+      "dependencies": [
+        "licensing_checklist",
+        "operations_plan",
+        "marketing_plan"
+      ],
+      "agent_class": "special",
+      "special_key": "execution_roadmap",
+      "prompt_key": "execution_roadmap_prompt",
+      "status": "Not Started",
+      "audience": "Mixed",
       "must_have": "",
       "usage_frequency": "",
       "notes": ""

@@ -50,6 +50,11 @@ export interface ProjectCreateRequest {
   codebase_path?: string;
 }
 
+export interface BrickAndMortarProjectRequest {
+  user_idea: string;
+  provider_name?: string;
+}
+
 export interface ProjectCreateResponse {
   project_id: string;
   status: string;
@@ -166,6 +171,12 @@ export async function createProject(
   request: ProjectCreateRequest
 ): Promise<ProjectCreateResponse> {
   return postJSON<ProjectCreateResponse>('/api/projects', request);
+}
+
+export async function createBrickAndMortarProject(
+  request: BrickAndMortarProjectRequest
+): Promise<ProjectCreateResponse> {
+  return postJSON<ProjectCreateResponse>('/api/projects/brick-and-mortar', request);
 }
 
 export async function getProjectStatus(

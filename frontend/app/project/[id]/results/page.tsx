@@ -70,21 +70,21 @@ export default function ProjectResultsPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="text-gray-500">{t('results.loading')}</div>
+      <div className="flex h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="text-sm sm:text-base text-gray-500">{t('results.loading')}</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="rounded-lg bg-red-50 p-6 text-red-800">
-          <div className="font-medium">{t('results.errorLoading')}</div>
-          <div className="mt-2 text-sm">{error}</div>
+      <div className="flex h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="rounded-lg bg-red-50 p-4 sm:p-6 text-red-800 max-w-md w-full">
+          <div className="text-sm sm:text-base font-medium">{t('results.errorLoading')}</div>
+          <div className="mt-2 text-xs sm:text-sm break-words">{error}</div>
           <button
             onClick={() => router.push(`/project/${projectId}`)}
-            className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+            className="mt-4 rounded-lg bg-red-600 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white hover:bg-red-700 w-full sm:w-auto"
           >
             {t('results.backToStatus')}
           </button>
@@ -96,33 +96,33 @@ export default function ProjectResultsPage() {
   return (
     <div className="flex h-screen flex-col bg-gray-50 overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-gray-200 bg-white px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+      <div className="flex-shrink-0 border-b border-gray-200 bg-white px-4 sm:px-6 py-3 sm:py-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
               {t('results.title')}
             </h1>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-1 text-xs sm:text-sm text-gray-600 truncate">
               {t('status.projectId')}: {projectId}
             </p>
           </div>
-          <div className="flex space-x-3">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={handleShare}
-              className="flex items-center space-x-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+              className="flex items-center space-x-1 sm:space-x-2 rounded-lg border border-gray-300 bg-white px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
             >
               <span>{shareCopied ? '✓' : '🔗'}</span>
               <span>{shareCopied ? t('results.copied') : t('results.share')}</span>
             </button>
             <button
               onClick={() => router.push(`/project/${projectId}`)}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-gray-300 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               {t('results.backToStatus')}
             </button>
             <button
               onClick={() => router.push('/')}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-gray-300 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               {t('results.newProject')}
             </button>
@@ -135,15 +135,15 @@ export default function ProjectResultsPage() {
         {documents.length > 0 ? (
           <DocumentViewer documents={documents} projectId={projectId} />
         ) : (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center text-gray-500">
-              <div className="text-lg font-medium">{t('results.noDocuments')}</div>
-              <div className="mt-2 text-sm">
+          <div className="flex h-full items-center justify-center px-4">
+            <div className="text-center text-gray-500 max-w-md">
+              <div className="text-base sm:text-lg font-medium">{t('results.noDocuments')}</div>
+              <div className="mt-2 text-xs sm:text-sm">
                 {t('results.stillGenerating')}
               </div>
               <button
                 onClick={() => router.push(`/project/${projectId}`)}
-                className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 w-full sm:w-auto"
               >
                 {t('results.viewStatus')}
               </button>

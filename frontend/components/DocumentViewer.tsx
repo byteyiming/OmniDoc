@@ -102,15 +102,15 @@ export default function DocumentViewer({
   };
 
   return (
-    <div className="flex h-full w-full" style={{ height: '100%', overflow: 'hidden' }}>
+    <div className="flex flex-col h-full w-full md:flex-row" style={{ height: '100%', overflow: 'hidden' }}>
       {/* Document List Sidebar - Scrollable */}
+      {/* Mobile: Full width with max height, Desktop: Fixed width sidebar */}
       <div 
-        className="w-64 flex-shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col"
-        style={{ height: '100%', overflow: 'hidden' }}
+        className="w-full md:w-64 flex-shrink-0 border-b md:border-b-0 md:border-r border-gray-200 bg-gray-50 flex flex-col h-auto max-h-[40vh] md:h-full md:max-h-none overflow-hidden"
       >
-        <div className="p-4 flex-shrink-0 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Documents</h3>
-          <div className="mt-2 text-sm text-gray-500">
+        <div className="p-3 md:p-4 flex-shrink-0 border-b border-gray-200">
+          <h3 className="text-base md:text-lg font-semibold text-gray-900">Documents</h3>
+          <div className="mt-1 md:mt-2 text-xs md:text-sm text-gray-500">
             {documents.length} document{documents.length !== 1 ? 's' : ''}
           </div>
         </div>
@@ -128,16 +128,16 @@ export default function DocumentViewer({
               <button
                 key={doc.id}
                 onClick={() => setSelectedDocId(doc.id)}
-                className={`w-full rounded-lg p-3 text-left transition-colors ${
+                className={`w-full rounded-lg p-2 md:p-3 text-left transition-colors ${
                   selectedDocId === doc.id
                     ? 'bg-blue-50 text-gray-900'
                     : 'text-gray-900 hover:bg-gray-100'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 truncate font-medium text-gray-900">{doc.name}</div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 truncate text-sm md:text-base font-medium text-gray-900">{doc.name}</div>
                   <span
-                    className={`ml-2 rounded-full px-2 py-0.5 text-xs flex-shrink-0 ${
+                    className={`rounded-full px-2 py-0.5 text-xs flex-shrink-0 ${
                       doc.status === 'complete'
                         ? 'bg-green-100 text-green-800'
                         : 'bg-yellow-100 text-yellow-800'
@@ -160,16 +160,16 @@ export default function DocumentViewer({
         {selectedDoc ? (
           <>
             {/* Header - Sticky */}
-            <div className="flex-shrink-0 border-b border-gray-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">{selectedDoc.name}</h2>
+            <div className="flex-shrink-0 border-b border-gray-200 bg-white p-3 md:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-lg md:text-xl font-semibold text-gray-900 truncate">{selectedDoc.name}</h2>
                 </div>
-                <div className="flex space-x-2 items-center">
+                <div className="flex flex-wrap gap-2 items-center">
                   {selectedDoc.content && (
                     <button
                       onClick={() => copyToClipboard(selectedDoc.content!)}
-                      className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                      className={`rounded-lg border px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-medium transition-colors ${
                         copySuccess
                           ? 'border-green-500 bg-green-50 text-green-700'
                           : 'border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -181,7 +181,7 @@ export default function DocumentViewer({
                   {selectedDoc.file_path && (
                     <button
                       onClick={() => handleDownload(selectedDoc.id)}
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                      className="rounded-lg bg-blue-600 px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-medium text-white hover:bg-blue-700"
                     >
                       Download
                     </button>
@@ -201,18 +201,18 @@ export default function DocumentViewer({
                 height: 0 // Force flex child to respect parent height
               }}
             >
-              <div className="p-6">
+              <div className="p-4 md:p-6">
                 {selectedDoc.content ? (
-                  <div className="prose max-w-none text-gray-900">
+                  <div className="prose prose-sm md:prose-base max-w-none text-gray-900">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {selectedDoc.content}
                     </ReactMarkdown>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center p-12 text-gray-500">
+                  <div className="flex items-center justify-center p-8 md:p-12 text-gray-500">
                     <div className="text-center">
-                      <div className="text-lg font-medium">No content available</div>
-                      <div className="mt-2 text-sm">
+                      <div className="text-base md:text-lg font-medium">No content available</div>
+                      <div className="mt-2 text-xs md:text-sm">
                         {selectedDoc.status === 'pending'
                           ? 'Document is still being generated...'
                           : 'Document content is not available'}

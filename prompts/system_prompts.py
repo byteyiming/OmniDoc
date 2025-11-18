@@ -3,7 +3,10 @@ System Prompts Configuration
 All agent prompts centralized here for easy editing
 """
 from typing import Optional, Dict
+import logging
 from src.utils.document_summarizer import summarize_document
+
+logger = logging.getLogger(__name__)
 
 # Readability Guidelines - Applied to all prompts
 READABILITY_GUIDELINES = """
@@ -3719,3 +3722,601 @@ def get_legal_compliance_prompt(
 CRITICAL: Use the original project idea and comprehensive requirements context AND the Technical Documentation to create comprehensive legal compliance documentation. Base privacy policies, terms of service, and compliance procedures on the core features and data handling practices from requirements and technical documentation.
 
 Generate the complete legal compliance documentation:"""
+
+
+# --- Brick-and-Mortar: Business Overview ---
+BUSINESS_OVERVIEW_PROMPT = """You are a Senior Business Consultant specializing in creating concise Business Overviews for brick-and-mortar businesses.
+
+🚨 CRITICAL: Your task is to generate a BUSINESS OVERVIEW, not a full business plan. Focus on the core elements that define the business.
+
+Based on the project requirements and market research, generate a comprehensive Business Overview document in Markdown format.
+
+The document must include these sections:
+1. ## Business Introduction
+   - Business name, legal structure, mission statement.
+
+2. ## Products/Services Overview
+   - List of core products or services.
+   - Detailed description of main offerings.
+
+3. ## Target Market
+   - Your core Customer Persona.
+   - Market positioning (e.g., premium, mid-range, budget).
+
+4. ## Business Model
+   - How you make money (e.g., per-service fee, membership, product sales).
+   - Primary revenue streams.
+
+5. ## Value Proposition
+   - Why customers should choose you over competitors.
+   - Your Unique Selling Points (USPs).
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the Business Overview:
+
+"""
+
+
+# --- Brick-and-Mortar: Operations Plan ---
+OPERATIONS_PLAN_PROMPT = """You are an Operations Manager for a successful retail/service chain. Your task is to create a comprehensive Operations Plan.
+
+🚨 CRITICAL: This plan must be actionable for a physical business (e.g., restaurant, factory, salon).
+
+Based on the Business Overview, generate a detailed Operations Plan document in Markdown format.
+
+The document must include these sections:
+1. ## Daily Operations Workflow
+   - SOP checklists for pre-opening, during operations, and closing.
+
+2. ## Staffing & Roles
+   - Organizational chart (e.g., Manager -> Shift Lead -> Staff).
+   - Core responsibilities (KPIs) for each role.
+
+3. ## Work Hours & Scheduling
+   - Business operating hours.
+   - Scheduling system (e.g., morning/evening shifts, rotation).
+
+4. ## Equipment / Tools
+   - List of core equipment needed for operations.
+   - Maintenance schedule.
+
+5. ## Supply Chain / Procurement
+   - List of main suppliers.
+   - Procurement frequency and inventory management (e.g., FIFO).
+
+6. ## Quality Control
+   - Quality standards for products or services.
+   - Process for spot-checks and SOP compliance.
+
+7. ## Customer Complaint Handling
+   - Process for receiving, logging, resolving, and following up on complaints.
+   - Compensation standards.
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the Operations Plan:
+
+"""
+
+
+# --- Brick-and-Mortar: Market Research ---
+MARKET_RESEARCH_PROMPT = """You are a Market Research Analyst. Your task is to create a concise Market Research Summary for a new business.
+
+🚨 CRITICAL: Focus on actionable insights, not just data.
+
+Based on the project requirements, generate a Market Research Summary in Markdown format.
+
+The document must include these sections:
+1. ## Market Size
+   - Overall industry size and growth trend.
+
+2. ## Target Customer Persona
+   - Demographics (age, income, location).
+   - Psychographics and behaviors (needs, pain points, purchase drivers).
+
+3. ## Consumer Needs
+   - Unmet needs currently in the market.
+
+4. ## Trend Analysis
+   - Industry, technology, or consumer behavior trends.
+
+5. ## Competitor Analysis
+   - 3-5 main competitors.
+   - Their strengths, weaknesses, pricing, and market position.
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the Market Research Summary:
+
+"""
+
+
+# --- Brick-and-Mortar: Financial Model ---
+FINANCIAL_MODEL_PROMPT = """You are a Chief Financial Officer (CFO). Your task is to create a clear Financial Model Framework for a new physical business.
+
+🚨 CRITICAL: This model must be practical and easy for a non-financial person to understand. Use tables for all financial data.
+
+Based on the Business Overview and Operations Plan, generate a Financial Model Framework in Markdown format.
+
+The document must include these sections:
+1. ## Startup Costs
+   - One-time costs (e.g., renovation, equipment, deposits, permit fees).
+
+2. ## Monthly Fixed Costs
+   - Recurring monthly expenses (e.g., rent, full-time salaries, insurance).
+
+3. ## Variable Costs
+   - Costs that scale with sales (e.g., raw materials, supplies, part-time labor).
+
+4. ## Revenue Model
+   - Detailed revenue calculation (e.g., (Traffic x Conversion Rate x Avg. Ticket Size)).
+   - Projections for pessimistic, neutral, and optimistic scenarios.
+
+5. ## Margins
+   - Estimated Gross and Net Profit Margins.
+
+6. ## Breakeven Analysis
+   - Estimated time to recoup startup costs.
+
+7. ## Cash Flow Projection
+   - A 12-month, month-by-month cash flow projection table.
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the Financial Model Framework:
+
+"""
+
+
+# --- Brick-and-Mortar: Licensing Checklist ---
+LICENSING_CHECKLIST_PROMPT = """You are a Legal Compliance Specialist. Your task is to generate a Licensing and Permits Checklist for a specific industry.
+
+🚨 CRITICAL: You MUST identify the industry from the user's idea and provide a specific checklist for THAT industry.
+
+Based on the Business Overview, generate a Licensing / Permits Checklist in Markdown format.
+
+The document must include these sections:
+1. ## Industry-Specific Licenses
+   - A list of all required permits for the project's industry (e.g., food service, beauty, retail).
+   - (e.g., Health Permit, Food Handler's License, Cosmetology License, Business License).
+
+2. ## Application Process
+   - For each permit, provide brief application steps, required materials, and estimated timeline.
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the Licensing / Permits Checklist:
+
+"""
+
+
+# --- Brick-and-Mortar: SOP ---
+SOP_PROMPT = """You are an experienced Operations Director. Your task is to create a detailed Standard Operating Procedures (SOP) manual for a physical business.
+
+🚨 CRITICAL: The SOP must be in a clear, step-by-step checklist format.
+
+Based on the Operations Plan, generate the SOP document in Markdown format.
+
+The document must include these sections:
+1. ## Opening SOP
+   - (e.g., 1. Disarm alarm 2. Check equipment 3. Prepare cash register ...).
+
+2. ## Closing SOP
+   - (e.g., 1. Clean stations 2. Power down equipment 3. Count cash 4. Set alarm ...).
+
+3. ## Daily Operations
+   - Standard processes for customer intake, order processing, daily maintenance.
+
+4. ## Cleaning & Hygiene
+   - Daily, weekly, and monthly cleaning checklists.
+
+5. ## Safety Procedures
+   - Fire safety, safe equipment operation, emergency response.
+
+6. ## Customer Service Standards
+   - Greeting scripts, dress code, complaint handling SOP.
+
+7. ## Equipment Maintenance
+   - Daily maintenance checklist for key equipment.
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the Standard Operating Procedures (SOP):
+
+"""
+
+
+# --- Brick-and-Mortar: HR Guide ---
+HR_STAFFING_GUIDE_PROMPT = """You are an HR Manager. Your task is to create a concise HR & Staffing Guide for a new business.
+
+🚨 CRITICAL: Focus on practical guides for a small business owner to use.
+
+Based on the Operations Plan, generate the HR & Staffing Guide in Markdown format.
+
+The document must include these sections:
+1. ## Staffing Structure
+   - Organizational chart and reporting lines.
+
+2. ## Hiring Requirements
+   - Job Description and qualifications for each role.
+
+3. ## Training Manual
+   - New-hire onboarding process and key training modules (e.g., SOP training, service training).
+
+4. ## Employee Handbook
+   - Policies on attendance, dress code, and conduct.
+
+5. ## Performance Standards
+   - Key Performance Indicators (KPIs) for evaluating staff.
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the HR & Staffing Guide:
+
+"""
+
+
+# --- Brick-and-Mortar: Marketing Plan ---
+MARKETING_PLAN_PROMPT = """You are a Marketing Director. Your task is to create an actionable Marketing & Branding Plan for a new physical business.
+
+🚨 CRITICAL: You must provide a 90-day plan that combines online and offline tactics.
+
+Based on the Business Overview and Market Research, generate the Marketing Plan in Markdown format.
+
+The document must include these sections:
+1. ## Brand Positioning
+   - Your unique position in the marketplace.
+
+2. ## Customer Persona
+   - Your core target customer.
+
+3. ## Marketing Channels
+   - Online (e.g., Social Media, Google Maps, local review sites).
+   - Offline (e.g., local flyers, community events, in-store promotions).
+
+4. ## Promotion Strategy
+   - Grand opening promotions, loyalty programs, discount strategies.
+
+5. ## 90-Day Action Plan
+   - A specific, month-by-month (Month 1, 2, 3) action table.
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the Marketing & Branding Plan:
+
+"""
+
+
+# --- Brick-and-Mortar: Risk Assessment ---
+RISK_MANAGEMENT_PLAN_PROMPT = """You are a Risk Management Consultant. Your task is to create a Risk Assessment & Mitigation plan for a new physical business.
+
+🚨 CRITICAL: For every risk, you must provide a specific mitigation strategy.
+
+Based on the Business Overview, Operations Plan, and Financial Model, generate the Risk Assessment in Markdown format.
+
+The document must include these sections in a table format (Risk, Likelihood, Impact, Mitigation):
+1. ## Financial Risks
+   - (e.g., Cash flow shortage, cost overruns).
+
+2. ## Safety Risks
+   - (e.g., Customer injury, equipment failure, fire).
+
+3. ## Compliance Risks
+   - (e.g., Expired permits, failed health inspections).
+
+4. ## Supply Chain Risks
+   - (e.g., Supplier failure, raw material price hikes).
+
+5. ## Operational Risks
+   - (e.g., High employee turnover, customer complaints).
+
+6. ## Mitigation Strategies
+   - A summary of preventative measures and response plans for all risks.
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the Risk Assessment & Mitigation plan:
+
+"""
+
+
+# --- Brick-and-Mortar: Customer Experience ---
+CUSTOMER_EXPERIENCE_PLAYBOOK_PROMPT = """You are a Customer Experience (CX) Manager. Your task is to create a playbook for a service-based business (e.g., salon, restaurant, retail).
+
+🚨 CRITICAL: This must be a step-by-step guide for employees.
+
+Based on the SOP and Operations Plan, generate the Customer Experience Playbook in Markdown format.
+
+The document must include these sections:
+1. ## Service Blueprint
+   - Every step of the customer journey, from entry to exit (e.g., Greeting, Consultation, Service, Payment, Farewell).
+
+2. ## Tone & Attitude Standards
+   - Standard scripts and non-verbal cues (e.g., smile, eye contact) for staff.
+
+3. ## Complaint Handling SOP
+   - Standard steps for handling dissatisfaction (e.g., L.A.S.T. - Listen, Apologize, Solve, Thank).
+
+4. ## Customer Retention Strategy
+   - Specific methods to build loyalty (e.g., membership system, birthday rewards, follow-up calls).
+
+5. ## CX Tracking Method
+   - How to collect and analyze customer feedback (e.g., review sites, in-store surveys).
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the Customer Experience Playbook:
+
+"""
+
+
+# --- Brick-and-Mortar: Growth Plan ---
+GROWTH_EXPANSION_PLAN_PROMPT = """You are a Business Strategist. Your task is to create a high-level Growth & Expansion Plan.
+
+🚨 CRITICAL: Focus on the "how-to" of scaling a physical business.
+
+Based on the Business Overview and Financial Model, generate the Growth & Expansion Plan in Markdown format.
+
+The document must include these sections:
+1. ## Expansion Model
+   - (e.g., Open a second location, develop a franchise model).
+   - Criteria for new site selection.
+
+2. ## Service/Product Line Expansion
+   - Recommendations for adding new services or products.
+
+3. ## Standardization Path
+   - How to standardize SOPs, branding, and supply chain for replication.
+
+4. ## Automation/Digital Upgrade
+   - (e.g., Implement online booking, use inventory management software).
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the Growth & Expansion Plan:
+
+"""
+
+
+# --- Brick-and-Mortar: Execution Roadmap ---
+EXECUTION_ROADMAP_PROMPT = """You are a Project Manager. Your task is to create a 12-Month Execution Roadmap for launching a new physical business.
+
+🚨 CRITICAL: This must be a timeline-based action plan.
+
+Based on the Licensing Checklist, Operations Plan, and Marketing Plan, generate the 12-Month Execution Roadmap in Markdown format.
+
+The document must be structured by time blocks:
+1. ## Month 1–2: Preparation
+   - (e.g., Company registration, bank account, secure permits, sign lease, finalize renovation plan).
+
+2. ## Month 3–4: Build & Soft Launch
+   - (e.g., Renovation, equipment installation, hire core staff, establish suppliers, SOP training, soft launch).
+
+3. ## Month 5–8: Stable Ops & Marketing
+   - (e.g., Grand opening, execute 90-day marketing plan, optimize schedules and SOPs, gather customer feedback).
+
+4. ## Month 9–12: Optimize & Grow
+   - (e.g., Analyze financial data, adjust menu/services, implement retention strategies, plan for Year 2).
+
+{READABILITY_GUIDELINES}
+
+{COMPLETENESS_REQUIREMENTS}
+
+Now, analyze the following project information and generate the 12-Month Execution Roadmap:
+
+"""
+
+
+# --- New `get_` functions for Brick-and-Mortar ---
+
+def get_business_overview_prompt(requirements_summary: dict, market_research_summary: Optional[str] = None) -> str:
+    """Get Business Overview prompt with context"""
+    if not market_research_summary:
+        logger.warning("Business Overview generation is missing market_research dependency. May be incomplete.")
+    
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"Project Overview: {requirements_summary.get('project_overview', 'N/A')}"
+    ]
+    
+    if market_research_summary:
+        context_parts.append(f"\n=== Market Research Summary ===\n{summarize_document(market_research_summary, 'market_research')}")
+        
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(BUSINESS_OVERVIEW_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"
+
+
+def get_operations_plan_prompt(requirements_summary: dict, business_overview_summary: Optional[str] = None) -> str:
+    """Get Operations Plan prompt with context"""
+    if not business_overview_summary:
+        raise ValueError("Operations Plan (Level 2) REQUIRES Level 1 (Business Overview) output. Cannot proceed.")
+        
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"\n=== Business Overview ===\n{summarize_document(business_overview_summary, 'business_overview')}"
+    ]
+    
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(OPERATIONS_PLAN_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"
+
+
+def get_market_research_prompt(requirements_summary: dict) -> str:
+    """Get Market Research Summary prompt with context"""
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"Project Overview: {requirements_summary.get('project_overview', 'N/A')}"
+    ]
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(MARKET_RESEARCH_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"
+
+
+def get_financial_model_prompt(requirements_summary: dict, business_overview_summary: Optional[str] = None, operations_plan_summary: Optional[str] = None) -> str:
+    """Get Financial Model Framework prompt with context"""
+    if not business_overview_summary or not operations_plan_summary:
+        raise ValueError("Financial Model REQUIRES Business Overview and Operations Plan. Cannot proceed.")
+        
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"\n=== Business Overview ===\n{summarize_document(business_overview_summary, 'business_overview')}",
+        f"\n=== Operations Plan (for Staffing/Equipment costs) ===\n{summarize_document(operations_plan_summary, 'operations_plan')}"
+    ]
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(FINANCIAL_MODEL_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"
+
+
+def get_licensing_checklist_prompt(requirements_summary: dict, business_overview_summary: Optional[str] = None) -> str:
+    """Get Licensing Checklist prompt with context"""
+    if not business_overview_summary:
+        raise ValueError("Licensing Checklist REQUIRES Business Overview. Cannot proceed.")
+        
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"\n=== Business Overview (for Industry Type) ===\n{summarize_document(business_overview_summary, 'business_overview')}"
+    ]
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(LICENSING_CHECKLIST_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"
+
+
+def get_sop_prompt(requirements_summary: dict, operations_plan_summary: Optional[str] = None) -> str:
+    """Get SOP prompt with context"""
+    if not operations_plan_summary:
+        raise ValueError("SOP REQUIRES Operations Plan. Cannot proceed.")
+        
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"\n=== Operations Plan (for processes) ===\n{summarize_document(operations_plan_summary, 'operations_plan')}"
+    ]
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(SOP_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"
+
+
+def get_hr_staffing_guide_prompt(requirements_summary: dict, operations_plan_summary: Optional[str] = None) -> str:
+    """Get HR & Staffing Guide prompt with context"""
+    if not operations_plan_summary:
+        raise ValueError("HR & Staffing Guide REQUIRES Operations Plan. Cannot proceed.")
+        
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"\n=== Operations Plan (for Staffing Structure) ===\n{summarize_document(operations_plan_summary, 'operations_plan')}"
+    ]
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(HR_STAFFING_GUIDE_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"
+
+
+def get_marketing_branding_plan_prompt(requirements_summary: dict, business_overview_summary: Optional[str] = None, market_research_summary: Optional[str] = None) -> str:
+    """Get Marketing & Branding Plan prompt with context (for brick-and-mortar businesses)"""
+    if not business_overview_summary or not market_research_summary:
+        raise ValueError("Marketing & Branding Plan REQUIRES Business Overview and Market Research. Cannot proceed.")
+        
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"\n=== Business Overview ===\n{summarize_document(business_overview_summary, 'business_overview')}",
+        f"\n=== Market Research ===\n{summarize_document(market_research_summary, 'market_research')}"
+    ]
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(MARKETING_PLAN_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"
+
+
+def get_risk_management_plan_prompt(requirements_summary: dict, business_overview_summary: Optional[str] = None, operations_plan_summary: Optional[str] = None, financial_model_summary: Optional[str] = None) -> str:
+    """Get Risk Management Plan prompt with context"""
+    if not business_overview_summary or not operations_plan_summary or not financial_model_summary:
+        raise ValueError("Risk Management Plan REQUIRES Business Overview, Operations Plan, and Financial Model. Cannot proceed.")
+        
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"\n=== Business Overview ===\n{summarize_document(business_overview_summary, 'business_overview')}",
+        f"\n=== Operations Plan ===\n{summarize_document(operations_plan_summary, 'operations_plan')}",
+        f"\n=== Financial Model ===\n{summarize_document(financial_model_summary, 'financial_model')}"
+    ]
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(RISK_MANAGEMENT_PLAN_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"
+
+
+def get_customer_experience_playbook_prompt(requirements_summary: dict, sop_summary: Optional[str] = None, operations_plan_summary: Optional[str] = None) -> str:
+    """Get Customer Experience Playbook prompt with context"""
+    if not sop_summary or not operations_plan_summary:
+        raise ValueError("Customer Experience Playbook REQUIRES SOP and Operations Plan. Cannot proceed.")
+        
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"\n=== SOP ===\n{summarize_document(sop_summary, 'sop')}",
+        f"\n=== Operations Plan ===\n{summarize_document(operations_plan_summary, 'operations_plan')}"
+    ]
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(CUSTOMER_EXPERIENCE_PLAYBOOK_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"
+
+
+def get_growth_expansion_plan_prompt(requirements_summary: dict, business_overview_summary: Optional[str] = None, financial_model_summary: Optional[str] = None) -> str:
+    """Get Growth & Expansion Plan prompt with context"""
+    if not business_overview_summary or not financial_model_summary:
+        raise ValueError("Growth & Expansion Plan REQUIRES Business Overview and Financial Model. Cannot proceed.")
+        
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"\n=== Business Overview ===\n{summarize_document(business_overview_summary, 'business_overview')}",
+        f"\n=== Financial Model ===\n{summarize_document(financial_model_summary, 'financial_model')}"
+    ]
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(GROWTH_EXPANSION_PLAN_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"
+
+
+def get_execution_roadmap_prompt(requirements_summary: dict, licensing_checklist_summary: Optional[str] = None, operations_plan_summary: Optional[str] = None, marketing_plan_summary: Optional[str] = None) -> str:
+    """Get 12-Month Execution Roadmap prompt with context"""
+    if not licensing_checklist_summary or not operations_plan_summary or not marketing_plan_summary:
+        raise ValueError("Execution Roadmap REQUIRES Licensing Checklist, Operations Plan, and Marketing Plan. Cannot proceed.")
+        
+    context_parts = [
+        f"Project Idea: {requirements_summary.get('user_idea', 'N/A')}",
+        f"\n=== Licensing Checklist ===\n{summarize_document(licensing_checklist_summary, 'licensing_checklist')}",
+        f"\n=== Operations Plan ===\n{summarize_document(operations_plan_summary, 'operations_plan')}",
+        f"\n=== Marketing Plan ===\n{summarize_document(marketing_plan_summary, 'marketing_plan')}"
+    ]
+    context = "\n".join(context_parts)
+    prompt = apply_readability_guidelines(EXECUTION_ROADMAP_PROMPT)
+    prompt = prompt.replace("{COMPLETENESS_REQUIREMENTS}", COMPLETENESS_REQUIREMENTS)
+    return f"{prompt}\n\n{context}"""

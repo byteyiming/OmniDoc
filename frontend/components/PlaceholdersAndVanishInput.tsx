@@ -86,7 +86,7 @@ export function PlaceholdersAndVanishInput({
     <form
       id="userIdeaForm"
       className={cn(
-        'relative mx-auto max-w-5xl w-full',
+        'relative w-full',
         isVanish && 'opacity-0 scale-95 transition-all duration-300',
         className
       )}

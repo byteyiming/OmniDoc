@@ -65,7 +65,15 @@ def load_document_definitions() -> Dict[str, DocumentDefinition]:
         if not doc_id:
             continue
 
-        stage = raw.get("stage") or {}
+        # Handle stage field: can be either a dict or a string
+        stage_raw = raw.get("stage")
+        if isinstance(stage_raw, str):
+            # If stage is a string, convert it to dict format
+            stage = {"label": stage_raw, "notes": ""}
+        elif isinstance(stage_raw, dict):
+            stage = stage_raw
+        else:
+            stage = {}
 
         definitions[doc_id] = DocumentDefinition(
             id=doc_id,

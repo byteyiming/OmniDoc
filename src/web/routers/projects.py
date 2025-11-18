@@ -49,6 +49,11 @@ class ProjectCreateRequest(BaseModel):
     codebase_path: Optional[str] = None
 
 
+class BrickAndMortarProjectRequest(BaseModel):
+    user_idea: str = Field(..., min_length=1, max_length=5000)
+    provider_name: Optional[str] = Field(default=None, max_length=100)
+
+
 class ProjectCreateResponse(BaseModel):
     project_id: str
     status: str
@@ -160,6 +165,146 @@ async def create_project(request: Request, project_request: ProjectCreateRequest
         project_id=project_id,
         status="started",
         message="Project accepted. Generation has started.",
+    )
+
+
+# List of all brick-and-mortar document IDs
+BRICK_AND_MORTAR_DOCUMENTS = [
+    "business_overview",
+    "operations_plan",
+    "market_research",
+    "financial_model",
+    "licensing_checklist",
+    "sop",
+    "hr_staffing_guide",
+    "marketing_plan",
+    "risk_management_plan",
+    "customer_experience_playbook",
+    "growth_expansion_plan",
+    "execution_roadmap",
+]
+
+
+@router.post("/brick-and-mortar", response_model=ProjectCreateResponse, status_code=202)
+async def create_brick_and_mortar_project(
+    request: Request,
+    project_request: BrickAndMortarProjectRequest
+) -> ProjectCreateResponse:
+    """
+    Create a new brick-and-mortar business documentation project.
+    
+    This endpoint automatically generates all 12 essential documents for a brick-and-mortar business:
+    - Business Overview
+    - Operations Plan
+    - Market Research Summary
+    - Financial Model Framework
+    - Licensing / Permits Checklist
+    - Standard Operating Procedures (SOP)
+    - HR & Staffing Guide
+    - Marketing & Branding Plan
+    - Risk Assessment & Mitigation
+    - Customer Experience Playbook
+    - Growth & Expansion Plan
+    - 12-Month Execution Roadmap
+    
+    Args:
+        request: FastAPI request object
+        project_request: Request containing user_idea and optional provider_name
+    
+    Returns:
+        ProjectCreateResponse with project_id and status
+    
+    Raises:
+        HTTPException: 422 if validation fails, 500 if context manager not initialized,
+                      503 if Redis/Celery unavailable
+    """
+    # Validate input
+    if not project_request.user_idea or not project_request.user_idea.strip():
+        raise HTTPException(status_code=422, detail="Project idea cannot be empty.")
+    
+    if len(project_request.user_idea) > 5000:
+        raise HTTPException(status_code=422, detail="Project idea exceeds maximum length of 5000 characters.")
+
+    if context_manager is None:
+        raise HTTPException(status_code=500, detail="Context manager not initialized.")
+
+    # Sanitize user input
+    user_idea = project_request.user_idea.strip()[:5000]
+    
+    # Generate project ID
+    project_id = f"project_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    
+    # Use all 12 brick-and-mortar documents
+    selected_documents = BRICK_AND_MORTAR_DOCUMENTS.copy()
+
+    # Create project in database
+    context_manager.create_project(project_id, user_idea)
+    context_manager.update_project_status(
+        project_id=project_id,
+        status="in_progress",
+        user_idea=user_idea,
+        profile="config_driven",
+        provider_name=project_request.provider_name or "default",
+        completed_agents=[],
+        results={},
+        selected_documents=selected_documents,
+    )
+
+    # Check if Redis/Celery is available
+    redis_available = REDIS_AVAILABLE or check_redis_available()
+    if not redis_available:
+        error_msg = (
+            "Redis is not available. Please check Redis connection.\n"
+            f"Redis URL: {os.getenv('REDIS_URL', 'Not set')[:50]}...\n"
+            "For Upstash Redis, ensure SSL/TLS is configured correctly."
+        )
+        logger.error(
+            f"Redis not available for brick-and-mortar project {project_id} [Request-ID: {getattr(request.state, 'request_id', 'N/A')}]. "
+            f"Redis URL: {os.getenv('REDIS_URL', 'Not set')}"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=error_msg
+        )
+
+    # Submit task to Celery queue
+    try:
+        task = generate_documents_task.delay(
+            project_id=project_id,
+            user_idea=user_idea,
+            selected_documents=selected_documents,
+            provider_name=project_request.provider_name,
+            codebase_path=None,  # Brick-and-mortar projects don't need codebase
+        )
+        
+        logger.info(
+            f"✅ Submitted brick-and-mortar generation task {task.id} for project {project_id} "
+            f"with {len(selected_documents)} documents [Request-ID: {getattr(request.state, 'request_id', 'N/A')}]"
+        )
+        # Also print to stderr for Railway visibility
+        import sys
+        print(
+            f"[BRICK-AND-MORTAR TASK SUBMITTED] Task ID: {task.id}, Project: {project_id}, "
+            f"Documents: {len(selected_documents)}, Queue: celery",
+            file=sys.stderr,
+            flush=True
+        )
+    except Exception as exc:
+        error_msg = f"Failed to submit task to Celery queue: {str(exc)}"
+        logger.error(f"{error_msg} [Request-ID: {getattr(request.state, 'request_id', 'N/A')}]", exc_info=True)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Failed to submit task to background queue. "
+                "Please ensure Redis is running and Celery worker is started.\n"
+                f"Error: {str(exc)}"
+            )
+        )
+
+    return ProjectCreateResponse(
+        project_id=project_id,
+        status="started",
+        message=f"Brick-and-mortar project accepted. Generation of {len(selected_documents)} documents has started.",
     )
 
 

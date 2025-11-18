@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import TemplateSelector from '@/components/TemplateSelector';
 import OptionsSelector from '@/components/OptionsSelector';
 import { PlaceholdersAndVanishInput } from '@/components/PlaceholdersAndVanishInput';
 import HeroSection from '@/components/HeroSection';
 import HowItWorks from '@/components/HowItWorks';
-import { createProject } from '@/lib/api';
+import { createProject, createBrickAndMortarProject } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { type ViewMode } from '@/lib/documentRanking';
+import { DOCUMENT_TEMPLATES } from '@/lib/documentTemplates';
 
 export default function Home() {
   const router = useRouter();
@@ -20,6 +21,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [organizationMode, setOrganizationMode] = useState<'category' | 'level'>('category');
+  
 
   // Multi-language placeholders based on current language
   const placeholders = {
@@ -85,6 +87,23 @@ export default function Home() {
     }
   };
 
+  // Detect if brick-and-mortar template is selected
+  const isBrickAndMortarTemplate = useMemo(() => {
+    if (selectedDocuments.length === 0) return false;
+    const brickAndMortarTemplate = DOCUMENT_TEMPLATES.find((t) => t.id === 'brick_and_mortar');
+    if (!brickAndMortarTemplate) return false;
+    
+    const selectedSet = new Set(selectedDocuments);
+    const templateDocIds = brickAndMortarTemplate.documentIds;
+    
+    // Check if all brick-and-mortar documents are selected and they match exactly
+    return (
+      templateDocIds.length > 0 &&
+      templateDocIds.every((id) => selectedSet.has(id)) &&
+      templateDocIds.length === selectedDocuments.length
+    );
+  }, [selectedDocuments]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -94,7 +113,9 @@ export default function Home() {
       return;
     }
 
-    if (selectedDocuments.length === 0) {
+    // For brick-and-mortar template, we don't need to check selectedDocuments
+    // because the API will automatically select all 12 documents
+    if (!isBrickAndMortarTemplate && selectedDocuments.length === 0) {
       setError(t('documents.select'));
       return;
     }
@@ -102,10 +123,20 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      const response = await createProject({
-        user_idea: userIdea.trim(),
-        selected_documents: selectedDocuments,
-      });
+      let response;
+      
+      if (isBrickAndMortarTemplate) {
+        // Use the specialized brick-and-mortar endpoint
+        response = await createBrickAndMortarProject({
+          user_idea: userIdea.trim(),
+        });
+      } else {
+        // Use the regular project creation endpoint
+        response = await createProject({
+          user_idea: userIdea.trim(),
+          selected_documents: selectedDocuments,
+        });
+      }
 
       // Navigate to project status page
       router.push(`/project/${response.project_id}`);
@@ -122,9 +153,12 @@ export default function Home() {
       {/* Hero Section */}
       <HeroSection />
 
+      {/* How It Works Section */}
+      <HowItWorks />
+
       {/* Main Form Section - Vertical Layout: Template -> Options (with Document Selector) -> Input */}
-      <div className="mx-auto max-w-7xl px-4 py-12">
-        <div className="flex flex-col space-y-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6 sm:py-12">
+        <div className="flex flex-col space-y-4 sm:space-y-6">
           {/* Row 1: Template Selector */}
           <div className="w-full">
             <TemplateSelector
@@ -157,17 +191,26 @@ export default function Home() {
               minHeight="120px"
               isSubmitting={isSubmitting}
             />
+            {/* Character Count */}
+            <div className="mt-2 flex justify-end">
+              <span className={`text-xs sm:text-sm ${
+                userIdea.length >= 5000 
+                  ? 'text-red-600 font-medium' 
+                  : userIdea.length >= 4500 
+                    ? 'text-yellow-600' 
+                    : 'text-gray-500'
+              }`}>
+                {userIdea.length} / 5000
+              </span>
+            </div>
             {error && (
-              <div className="mt-2 text-xs text-red-600 text-center" suppressHydrationWarning>
+              <div className="mt-2 text-xs sm:text-sm text-red-600 text-center px-2" suppressHydrationWarning>
                 {error}
               </div>
             )}
           </div>
         </div>
       </div>
-
-      {/* How It Works Section */}
-      <HowItWorks />
     </div>
   );
 }

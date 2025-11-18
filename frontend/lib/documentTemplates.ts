@@ -160,6 +160,26 @@ export const DOCUMENT_TEMPLATES: DocumentTemplate[] = [
       'deployment_plan',
     ],
   },
+  {
+    id: 'brick_and_mortar',
+    name: 'Brick-and-Mortar Business',
+    description: 'Complete business documentation for physical businesses (restaurants, retail, services)',
+    icon: '🏪',
+    documentIds: [
+      'business_overview',
+      'operations_plan',
+      'market_research',
+      'financial_model',
+      'licensing_checklist',
+      'sop',
+      'hr_staffing_guide',
+      'marketing_plan',
+      'risk_management_plan',
+      'customer_experience_playbook',
+      'growth_expansion_plan',
+      'execution_roadmap',
+    ],
+  },
 ];
 
 /**

@@ -74,6 +74,31 @@ def _extract_requirements_summary(
     if business_model_doc:
         summary["business_model"] = business_model_doc.get("content", "")
 
+    # Brick-and-Mortar documents
+    business_overview_doc = dependency_documents.get("business_overview")
+    if business_overview_doc:
+        summary["business_overview_summary"] = business_overview_doc.get("content", "")
+
+    operations_plan_doc = dependency_documents.get("operations_plan")
+    if operations_plan_doc:
+        summary["operations_plan_summary"] = operations_plan_doc.get("content", "")
+
+    market_research_doc = dependency_documents.get("market_research")
+    if market_research_doc:
+        summary["market_research_summary"] = market_research_doc.get("content", "")
+
+    financial_model_doc = dependency_documents.get("financial_model")
+    if financial_model_doc:
+        summary["financial_model_summary"] = financial_model_doc.get("content", "")
+
+    licensing_checklist_doc = dependency_documents.get("licensing_checklist")
+    if licensing_checklist_doc:
+        summary["licensing_checklist_summary"] = licensing_checklist_doc.get("content", "")
+
+    sop_doc = dependency_documents.get("sop")
+    if sop_doc:
+        summary["sop_summary"] = sop_doc.get("content", "")
+
     # WBS
     wbs_doc = dependency_documents.get("wbs")
     if wbs_doc:
@@ -177,6 +202,60 @@ def _get_prompt_for_document(
         ),
         "support_playbook": lambda: system_prompts.get_support_playbook_prompt(req_summary),
         "legal_compliance": lambda: system_prompts.get_legal_compliance_prompt(req_summary),
+        # Brick-and-Mortar documents
+        "business_overview": lambda: system_prompts.get_business_overview_prompt(
+            req_summary,
+            req_summary.get("market_research_summary"),
+        ),
+        "operations_plan": lambda: system_prompts.get_operations_plan_prompt(
+            req_summary,
+            req_summary.get("business_overview_summary"),
+        ),
+        "market_research": lambda: system_prompts.get_market_research_prompt(req_summary),
+        "financial_model": lambda: system_prompts.get_financial_model_prompt(
+            req_summary,
+            req_summary.get("business_overview_summary"),
+            req_summary.get("operations_plan_summary"),
+        ),
+        "licensing_checklist": lambda: system_prompts.get_licensing_checklist_prompt(
+            req_summary,
+            req_summary.get("business_overview_summary"),
+        ),
+        "sop": lambda: system_prompts.get_sop_prompt(
+            req_summary,
+            req_summary.get("operations_plan_summary"),
+        ),
+        "hr_staffing_guide": lambda: system_prompts.get_hr_staffing_guide_prompt(
+            req_summary,
+            req_summary.get("operations_plan_summary"),
+        ),
+        "marketing_plan": lambda: system_prompts.get_marketing_branding_plan_prompt(
+            req_summary,
+            req_summary.get("business_overview_summary"),
+            req_summary.get("market_research_summary"),
+        ),
+        "risk_management_plan": lambda: system_prompts.get_risk_management_plan_prompt(
+            req_summary,
+            req_summary.get("business_overview_summary"),
+            req_summary.get("operations_plan_summary"),
+            req_summary.get("financial_model_summary"),
+        ),
+        "customer_experience_playbook": lambda: system_prompts.get_customer_experience_playbook_prompt(
+            req_summary,
+            req_summary.get("sop_summary"),
+            req_summary.get("operations_plan_summary"),
+        ),
+        "growth_expansion_plan": lambda: system_prompts.get_growth_expansion_plan_prompt(
+            req_summary,
+            req_summary.get("business_overview_summary"),
+            req_summary.get("financial_model_summary"),
+        ),
+        "execution_roadmap": lambda: system_prompts.get_execution_roadmap_prompt(
+            req_summary,
+            req_summary.get("licensing_checklist_summary"),
+            req_summary.get("operations_plan_summary"),
+            req_summary.get("marketing_plan_summary") or req_summary.get("marketing_plan"),
+        ),
     }
 
     prompt_fn = prompt_map.get(document_id)

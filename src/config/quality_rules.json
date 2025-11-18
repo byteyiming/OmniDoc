@@ -593,5 +593,113 @@
     "llm_focus": ["Are links correct?", "Do they provide relevant resources?", "Are descriptions clear?"],
     "auto_fail": ["No links listed"],
     "dependencies": []
+  },
+  "Business Overview": {
+    "min_word_count": 500,
+    "required_sections": ["Business Introduction", "Products/Services Overview", "Target Market", "Business Model", "Value Proposition"],
+    "optional_sections": [],
+    "readability_target": "50-65",
+    "llm_focus": ["Is the business model clear?", "Is the value proposition competitive?", "Is the target market defined?"],
+    "auto_fail": ["Missing Business Model", "Missing Value Proposition"],
+    "dependencies": ["Market Research Summary"]
+  },
+  "Operations Plan": {
+    "min_word_count": 600,
+    "required_sections": ["Daily Operations Workflow", "Staffing & Roles", "Supply Chain / Procurement", "Quality Control", "Customer Complaint Handling"],
+    "optional_sections": ["Equipment / Tools", "Work Hours & Scheduling"],
+    "readability_target": "50-65",
+    "llm_focus": ["Are the operational workflows actionable?", "Are responsibilities clearly assigned?", "Is the complaint process complete?"],
+    "auto_fail": ["Missing Daily Operations Workflow", "Missing Staffing Structure", "Missing Customer Complaint Handling"],
+    "dependencies": ["Business Overview"]
+  },
+  "Market Research Summary": {
+    "min_word_count": 500,
+    "required_sections": ["Market Size", "Target Customer Persona", "Consumer Needs", "Trend Analysis", "Competitor Analysis"],
+    "optional_sections": [],
+    "readability_target": "50-65",
+    "llm_focus": ["Is the customer persona specific?", "Is the competitor analysis thorough?", "Are market trends clear?"],
+    "auto_fail": ["Missing Target Customer Persona", "Missing Competitor Analysis"],
+    "dependencies": []
+  },
+  "Financial Model Framework": {
+    "min_word_count": 400,
+    "required_sections": ["Startup Costs", "Monthly Fixed Costs", "Variable Costs", "Revenue Model", "Breakeven Analysis", "Cash Flow Projection"],
+    "optional_sections": ["Gross/Net Margins"],
+    "readability_target": "50-65",
+    "llm_focus": ["Are costs complete?", "Is the revenue model reasonable?", "Does the cash flow projection cover at least 12 months?"],
+    "auto_fail": ["Missing Startup Costs", "Missing Revenue Model", "Missing Cash Flow Projection"],
+    "dependencies": ["Business Overview", "Operations Plan"]
+  },
+  "Licensing / Permits Checklist": {
+    "min_word_count": 200,
+    "required_sections": ["Industry-Specific Licenses", "Application Process"],
+    "optional_sections": [],
+    "readability_target": "60-75",
+    "llm_focus": ["Is the checklist specific to the industry?", "Is the application process clear?"],
+    "auto_fail": ["Missing License Checklist"],
+    "dependencies": ["Business Overview"]
+  },
+  "Standard Operating Procedures (SOP)": {
+    "min_word_count": 700,
+    "required_sections": ["Opening SOP", "Closing SOP", "Daily Operations", "Cleaning & Hygiene", "Safety Procedures", "Customer Service Standards"],
+    "optional_sections": ["Equipment Maintenance"],
+    "readability_target": "60-75",
+    "llm_focus": ["Are SOPs in checklist format?", "Are steps clear and actionable?", "Are all core operations covered?"],
+    "auto_fail": ["Missing Opening SOP", "Missing Closing SOP", "Missing Customer Service Standards"],
+    "dependencies": ["Operations Plan"]
+  },
+  "HR & Staffing Guide": {
+    "min_word_count": 500,
+    "required_sections": ["Staffing Structure", "Hiring Requirements", "Training Manual", "Employee Handbook", "Performance Standards"],
+    "optional_sections": ["Probationary Period Standards"],
+    "readability_target": "55-70",
+    "llm_focus": ["Is the staffing structure clear?", "Is the training manual specific?", "Are performance standards measurable?"],
+    "auto_fail": ["Missing Staffing Structure", "Missing Training Manual", "Missing Performance Standards"],
+    "dependencies": ["Operations Plan"]
+  },
+  "Marketing & Branding Plan": {
+    "min_word_count": 600,
+    "required_sections": ["Brand Positioning", "Customer Persona", "Marketing Channels", "Promotion Strategy", "90-Day Action Plan"],
+    "optional_sections": ["Social Media Strategy"],
+    "readability_target": "50-65",
+    "llm_focus": ["Is the brand positioning unique?", "Do marketing channels combine online and offline?", "Is the 90-day plan actionable?"],
+    "auto_fail": ["Missing Brand Positioning", "Missing Marketing Channels", "Missing 90-Day Action Plan"],
+    "dependencies": ["Business Overview", "Market Research Summary"]
+  },
+  "Risk Assessment & Mitigation": {
+    "min_word_count": 500,
+    "required_sections": ["Financial Risks", "Safety Risks", "Compliance Risks", "Supply Chain Risks", "Operational Risks", "Mitigation Strategies"],
+    "optional_sections": ["Personnel Risks"],
+    "readability_target": "50-65",
+    "llm_focus": ["Are risks comprehensively covered?", "Are mitigation strategies specific?"],
+    "auto_fail": ["No risks listed", "No mitigation strategies"],
+    "dependencies": ["Business Overview", "Operations Plan", "Financial Model Framework"]
+  },
+  "Customer Experience Playbook": {
+    "min_word_count": 500,
+    "required_sections": ["Service Blueprint", "Tone & Attitude Standards", "Complaint Handling SOP", "Customer Retention Strategy", "CX Tracking Method"],
+    "optional_sections": [],
+    "readability_target": "60-75",
+    "llm_focus": ["Is the service blueprint specific?", "Is the complaint handling a closed loop?", "Are retention strategies creative?"],
+    "auto_fail": ["Missing Service Blueprint", "Missing Complaint Handling SOP"],
+    "dependencies": ["Standard Operating Procedures (SOP)", "Operations Plan"]
+  },
+  "Growth & Expansion Plan": {
+    "min_word_count": 400,
+    "required_sections": ["Expansion Model", "Service/Product Line Expansion", "Standardization Path"],
+    "optional_sections": ["Automation/Digital Upgrade"],
+    "readability_target": "50-65",
+    "llm_focus": ["Is the expansion model clear?", "Is the standardization path replicable?"],
+    "auto_fail": ["Missing Expansion Model", "Missing Standardization Path"],
+    "dependencies": ["Business Overview", "Financial Model Framework"]
+  },
+  "12-Month Execution Roadmap": {
+    "min_word_count": 400,
+    "required_sections": ["Month 1–2", "Month 3–4", "Month 5–8", "Month 9–12"],
+    "optional_sections": [],
+    "readability_target": "55-70",
+    "llm_focus": ["Is the roadmap split by month/quarter?", "Does it include key milestones (permits, build-out, soft launch)?"],
+    "auto_fail": ["Not phased by time", "Missing key milestones"],
+    "dependencies": ["Licensing / Permits Checklist", "Operations Plan", "Marketing & Branding Plan"]
   }
 }

@@ -263,22 +263,22 @@ export default function ProjectStatusPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto max-w-4xl px-4 py-12">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">{t('status.title')}</h1>
-          <p className="mt-2 text-sm text-gray-600">{t('status.projectId')}: {projectId}</p>
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 py-6 sm:py-12">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{t('status.title')}</h1>
+          <p className="mt-2 text-xs sm:text-sm text-gray-600 break-all">{t('status.projectId')}: {projectId}</p>
         </div>
 
         {/* Connection Status */}
-        <div className="mb-6 rounded-lg bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+        <div className="mb-4 sm:mb-6 rounded-lg bg-white p-3 sm:p-4 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="flex items-center space-x-2">
               <div
                 className={`h-3 w-3 rounded-full ${
                   wsConnected ? 'bg-green-500' : 'bg-yellow-500'
                 }`}
               />
-              <span className="text-sm text-gray-700">
+              <span className="text-xs sm:text-sm text-gray-700">
                 {wsConnected
                   ? t('status.connected')
                   : t('status.polling')}
@@ -286,7 +286,7 @@ export default function ProjectStatusPage() {
             </div>
             {status && (
               <span
-                className={`rounded-full px-3 py-1 text-sm font-medium ${
+                className={`rounded-full px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium ${
                   status.status === 'complete'
                     ? 'bg-green-100 text-green-800'
                     : status.status === 'failed'
@@ -301,7 +301,7 @@ export default function ProjectStatusPage() {
         </div>
 
         {/* Progress Timeline */}
-        <div className="rounded-lg bg-white p-6 shadow-sm">
+        <div className="rounded-lg bg-white p-4 sm:p-6 shadow-sm">
           {isLoading && events.length === 0 ? (
             <div className="flex items-center justify-center p-8">
               <div className="text-gray-500">{t('status.loading')}</div>
@@ -333,10 +333,10 @@ export default function ProjectStatusPage() {
 
         {/* Action Buttons */}
         {isComplete && (
-          <div className="mt-6 flex justify-end">
+          <div className="mt-4 sm:mt-6 flex justify-end">
             <button
               onClick={handleViewResults}
-              className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700"
+              className="rounded-lg bg-blue-600 px-4 sm:px-6 py-2 sm:py-3 text-sm sm:text-base font-medium text-white hover:bg-blue-700"
             >
               {t('button.viewResults')} →
             </button>
@@ -344,9 +344,9 @@ export default function ProjectStatusPage() {
         )}
 
         {status?.error && (
-          <div className="mt-6 rounded-lg bg-red-50 p-4 text-red-800">
-            <div className="font-medium">{t('status.error')}:</div>
-            <div className="mt-1 text-sm">{status.error}</div>
+          <div className="mt-4 sm:mt-6 rounded-lg bg-red-50 p-3 sm:p-4 text-red-800">
+            <div className="text-sm sm:text-base font-medium">{t('status.error')}:</div>
+            <div className="mt-1 text-xs sm:text-sm break-words">{status.error}</div>
           </div>
         )}
       </div>
