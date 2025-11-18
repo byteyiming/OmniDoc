@@ -3183,6 +3183,131 @@ CRITICAL: Use BOTH the original project idea and requirements context AND the Pr
 Generate the COMPLETE marketing plan with ALL sections fully populated:"""
 
 
+# Feature Roadmap Prompt
+FEATURE_ROADMAP_PROMPT = """You are a Product Manager specializing in creating Feature Roadmaps.
+
+🚨 CRITICAL INSTRUCTIONS:
+- DO NOT use placeholder text like "[Describe...]", "[Estimate...]", or "[Example:...]"
+- DO NOT leave sections incomplete or with template text
+- GENERATE actual, specific content based on the project information provided
+- FILL IN all tables completely with real data, not placeholders
+- CREATE specific examples and details, not generic templates
+
+The document must include these sections with COMPLETE, SPECIFIC content:
+1. ## Executive Summary
+   - Roadmap overview (specific goals and timeline)
+   - Strategic priorities (actual priorities)
+   - Key milestones (specific dates and deliverables)
+
+2. ## Features
+   - Feature list with detailed descriptions (specific features, not placeholders)
+   - Feature categories (actual categories)
+   - Feature dependencies (specific dependencies between features)
+   - Create a table with Feature Name, Description, Category, Priority, and Dependencies (all fields must be filled with actual data)
+
+3. ## Timeline
+   - Release phases (specific phases with dates)
+   - Feature delivery schedule (actual schedule with timelines)
+   - Milestone dates (specific dates)
+   - Create a timeline table with Phase, Features, Target Date, and Status (all fields must be filled)
+
+4. ## Dependencies
+   - Technical dependencies (specific technical requirements)
+   - Business dependencies (specific business requirements)
+   - External dependencies (specific external factors)
+   - Dependency mapping (clear dependency relationships)
+
+5. ## Priority
+   - Priority framework (specific priority levels and criteria)
+   - Feature prioritization (actual priority rankings)
+   - Priority rationale (specific reasons for priorities)
+   - Priority matrix (visual representation with actual data)
+
+6. ## KPIs and Success Metrics (Optional but Recommended)
+   - Key performance indicators (specific KPIs)
+   - Success criteria (measurable criteria)
+   - Measurement methods (how to measure success)
+
+Format requirements:
+- Use clear Markdown headings (## for main sections)
+- Use tables for features, timeline, and priority information
+- ALL tables must be COMPLETE with all rows and columns filled in
+- Include specific timelines, priorities, and dependencies (not placeholders)
+- Be strategic and actionable
+- Base recommendations on requirements, project charter, and business model
+- DO NOT use placeholder text - generate actual content
+{READABILITY_GUIDELINES}
+
+Now, analyze the following project information and generate the COMPLETE feature roadmap with ALL sections fully populated:"""
+
+
+# Risk Management Plan Prompt
+RISK_MANAGEMENT_PROMPT = """You are a Risk Management Specialist. Your task is to create comprehensive risk management documentation.
+
+🚨 CRITICAL INSTRUCTIONS:
+- DO NOT use placeholder text like "[Describe...]", "[Estimate...]", or "[Example:...]"
+- DO NOT leave sections incomplete or with template text
+- GENERATE actual, specific content based on the project information provided
+- FILL IN all tables completely with real data, not placeholders
+- CREATE specific examples and details, not generic templates
+
+The document must include these sections with COMPLETE, SPECIFIC content:
+1. ## Executive Summary
+   - Risk management overview (specific approach)
+   - Key risk categories (actual categories)
+   - Overall risk profile (specific assessment)
+
+2. ## Risk Identification
+   - Project risks (specific risks identified)
+   - Technical risks (specific technical challenges)
+   - Business risks (specific business challenges)
+   - External risks (specific external factors)
+   - Create a risk register table with Risk ID, Description, Category, and Initial Assessment (all fields must be filled)
+
+3. ## Impact Assessment
+   - Impact analysis methodology (specific methodology)
+   - Impact levels (specific impact categories)
+   - Impact on project objectives (specific impacts)
+   - Create an impact matrix with actual risk impacts
+
+4. ## Likelihood
+   - Likelihood assessment (specific probability levels)
+   - Likelihood factors (specific factors affecting likelihood)
+   - Historical data (if available, specific data)
+   - Likelihood matrix (visual representation with actual data)
+
+5. ## Mitigation Strategies
+   - Risk mitigation plans (specific mitigation actions)
+   - Preventive measures (specific preventive actions)
+   - Contingency plans (specific contingency actions)
+   - Risk response strategies (specific response strategies)
+   - Create a mitigation table with Risk ID, Mitigation Strategy, Owner, Timeline, and Status (all fields must be filled)
+
+6. ## Monitoring Plan
+   - Risk monitoring approach (specific monitoring methods)
+   - Monitoring frequency (specific schedule)
+   - Key risk indicators (specific indicators)
+   - Escalation procedures (specific procedures)
+   - Reporting schedule (specific reporting timeline)
+
+7. ## Contingency Plan (Optional but Recommended)
+   - Contingency scenarios (specific scenarios)
+   - Response procedures (specific procedures)
+   - Resource allocation (specific resources)
+
+Format requirements:
+- Use clear Markdown headings (## for main sections)
+- Use tables for risk register, impact matrix, and mitigation plans
+- ALL tables must be COMPLETE with all rows and columns filled in
+- Include specific risks, impacts, and mitigation strategies (not placeholders)
+- Be comprehensive and actionable
+- Base recommendations on project charter, requirements, and business model
+- DO NOT use placeholder text - generate actual content
+{READABILITY_GUIDELINES}
+
+Now, analyze the following project information and generate the COMPLETE risk management plan with ALL sections fully populated:"""
+
+
 def get_business_model_prompt(
     requirements_summary: dict,
     project_charter_summary: Optional[str] = None
@@ -3254,6 +3379,200 @@ def get_business_model_prompt(
 CRITICAL: Use BOTH the original project idea and requirements context AND the Project Charter to create a comprehensive business model. Base revenue models, pricing strategy, and KPIs on the core features and business objectives from requirements, and align with the business case in the Charter.
 
 Generate the complete business model:"""
+
+
+def get_feature_roadmap_prompt(
+    requirements_summary: dict,
+    project_charter_summary: Optional[str] = None,
+    business_model_summary: Optional[str] = None
+) -> str:
+    """Get feature roadmap prompt with requirements, project charter, and business model"""
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
+    
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    context_text = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available
+    if requirements_document:
+        context_text += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}"
+        if len(requirements_document) > 5000:
+            context_text += f"\n[... document continues, {len(requirements_document)} total characters ...]"
+    
+    if project_charter_summary:
+        charter_processed = summarize_document(
+            project_charter_summary,
+            document_type="project charter",
+            target_agent="feature_roadmap",
+            focus_areas=["timeline", "milestones", "objectives", "scope"]
+        ) if len(project_charter_summary) > 3000 else project_charter_summary
+        
+        context_text += f"""
+
+=== Project Charter (Timeline & Milestones Context) ===
+{charter_processed}
+"""
+    
+    if business_model_summary:
+        business_processed = summarize_document(
+            business_model_summary,
+            document_type="business model",
+            target_agent="feature_roadmap",
+            focus_areas=["revenue model", "pricing strategy", "target customers", "value proposition"]
+        ) if len(business_model_summary) > 3000 else business_model_summary
+        
+        context_text += f"""
+
+=== Business Model (Priority & Value Context) ===
+{business_processed}
+"""
+    
+    feature_roadmap_prompt = apply_readability_guidelines(FEATURE_ROADMAP_PROMPT)
+    return f"""{feature_roadmap_prompt}
+
+=== REQUIREMENTS CONTEXT ===
+{context_text}
+
+CRITICAL: Use BOTH the original project idea and requirements context AND the Project Charter and Business Model to create a comprehensive feature roadmap. Base features, timeline, and priorities on the core features from requirements, align with milestones in the Charter, and prioritize based on business value from the Business Model.
+
+🚨 COMPLETENESS REQUIREMENTS:
+- You MUST complete ALL sections with full, detailed content - do not leave any section incomplete
+- You MUST NOT use placeholder text like '[Describe...]', '[Example:...]', or '[Estimate Size]'
+- You MUST fill in ALL tables completely with actual data, not placeholders
+- You MUST generate specific, actionable content based on the project information provided
+- You MUST ensure the document is comprehensive and complete - do not stop mid-section
+- If a section requires examples, provide real, specific examples based on the project
+- If a section requires data or metrics, provide realistic estimates based on the project scope
+
+Generate the COMPLETE feature roadmap with ALL sections fully populated:"""
+
+
+def get_risk_management_prompt(
+    requirements_summary: dict,
+    project_charter_summary: Optional[str] = None,
+    business_model_summary: Optional[str] = None
+) -> str:
+    """Get risk management prompt with requirements, project charter, and business model"""
+    # Get comprehensive requirements context
+    user_idea = requirements_summary.get("user_idea", "")
+    project_overview = requirements_summary.get("project_overview", "")
+    core_features = requirements_summary.get("core_features", [])
+    business_objectives = requirements_summary.get("business_objectives", [])
+    user_personas = requirements_summary.get("user_personas", [])
+    technical_requirements = requirements_summary.get("technical_requirements", {})
+    constraints = requirements_summary.get("constraints", [])
+    assumptions = requirements_summary.get("assumptions", [])
+    requirements_document = requirements_summary.get("requirements_document", "")
+    
+    # Build comprehensive requirements context
+    req_context_parts = []
+    if user_idea:
+        req_context_parts.append(f"Original Project Idea: {user_idea}")
+    if project_overview:
+        req_context_parts.append(f"\nProject Overview: {project_overview}")
+    if core_features:
+        req_context_parts.append(f"\nCore Features:\n" + "\n".join(f"- {feature}" for feature in core_features))
+    if business_objectives:
+        req_context_parts.append(f"\nBusiness Objectives:\n" + "\n".join(f"- {obj}" for obj in business_objectives))
+    if user_personas:
+        req_context_parts.append(f"\nUser Personas:\n" + "\n".join(f"- {persona.get('name', 'User')}: {persona.get('description', '')}" if isinstance(persona, dict) else f"- {persona}" for persona in user_personas))
+    if technical_requirements:
+        if isinstance(technical_requirements, dict):
+            req_context_parts.append(f"\nTechnical Requirements:")
+            for key, value in technical_requirements.items():
+                req_context_parts.append(f"- {key}: {value}")
+        else:
+            req_context_parts.append(f"\nTechnical Requirements: {technical_requirements}")
+    if constraints:
+        req_context_parts.append(f"\nConstraints:\n" + "\n".join(f"- {constraint}" for constraint in constraints))
+    if assumptions:
+        req_context_parts.append(f"\nAssumptions:\n" + "\n".join(f"- {assumption}" for assumption in assumptions))
+    
+    context_text = "\n".join(req_context_parts) if req_context_parts else ""
+    
+    # Include full requirements document if available
+    if requirements_document:
+        context_text += f"\n\n=== Full Requirements Document (for reference) ===\n{requirements_document[:5000] if len(requirements_document) > 5000 else requirements_document}"
+        if len(requirements_document) > 5000:
+            context_text += f"\n[... document continues, {len(requirements_document)} total characters ...]"
+    
+    if project_charter_summary:
+        charter_processed = summarize_document(
+            project_charter_summary,
+            document_type="project charter",
+            target_agent="risk_management",
+            focus_areas=["risks", "assumptions", "constraints", "timeline", "budget"]
+        ) if len(project_charter_summary) > 3000 else project_charter_summary
+        
+        context_text += f"""
+
+=== Project Charter (Risk Context) ===
+{charter_processed}
+"""
+    
+    if business_model_summary:
+        business_processed = summarize_document(
+            business_model_summary,
+            document_type="business model",
+            target_agent="risk_management",
+            focus_areas=["revenue risks", "market risks", "financial risks", "competitive risks"]
+        ) if len(business_model_summary) > 3000 else business_model_summary
+        
+        context_text += f"""
+
+=== Business Model (Business Risk Context) ===
+{business_processed}
+"""
+    
+    risk_management_prompt = apply_readability_guidelines(RISK_MANAGEMENT_PROMPT)
+    return f"""{risk_management_prompt}
+
+=== REQUIREMENTS CONTEXT ===
+{context_text}
+
+CRITICAL: Use BOTH the original project idea and requirements context AND the Project Charter and Business Model to create a comprehensive risk management plan. Identify risks based on core features and technical requirements from requirements, align with risks and assumptions in the Charter, and consider business risks from the Business Model.
+
+🚨 COMPLETENESS REQUIREMENTS:
+- You MUST complete ALL sections with full, detailed content - do not leave any section incomplete
+- You MUST NOT use placeholder text like '[Describe...]', '[Example:...]', or '[Estimate Size]'
+- You MUST fill in ALL tables completely with actual data, not placeholders
+- You MUST generate specific, actionable content based on the project information provided
+- You MUST ensure the document is comprehensive and complete - do not stop mid-section
+- If a section requires examples, provide real, specific examples based on the project
+- If a section requires data or metrics, provide realistic estimates based on the project scope
+
+Generate the COMPLETE risk management plan with ALL sections fully populated:"""
 
 
 def get_support_playbook_prompt(

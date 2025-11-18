@@ -728,7 +728,8 @@
       "category": "用户 / 产品分析",
       "description": "上市推广策略",
       "prompt_key": "gtm_strategy_prompt",
-      "agent_class": "generic",
+      "agent_class": "special",
+      "special_key": "marketing_plan",
       "dependencies": [
         "feature_roadmap",
         "business_model"
@@ -1048,7 +1049,8 @@
       "category": "项目管理 / 规划",
       "description": "风险分析与缓解措施",
       "prompt_key": "risk_management_plan_prompt",
-      "agent_class": "generic",
+      "agent_class": "special",
+      "special_key": "risk_management_plan",
       "dependencies": [
         "project_charter",
         "requirements",
@@ -1116,7 +1118,8 @@
       "category": "项目管理 / 规划",
       "description": "功能迭代计划",
       "prompt_key": "feature_roadmap_prompt",
-      "agent_class": "generic",
+      "agent_class": "special",
+      "special_key": "feature_roadmap",
       "dependencies": [
         "requirements",
         "project_charter",

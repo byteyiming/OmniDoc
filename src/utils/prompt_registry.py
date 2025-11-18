@@ -165,6 +165,16 @@ def _get_prompt_for_document(
             req_summary.get("project_charter_summary"),
             req_summary.get("business_model"),
         ),
+        "feature_roadmap": lambda: system_prompts.get_feature_roadmap_prompt(
+            req_summary,
+            req_summary.get("project_charter_summary"),
+            req_summary.get("business_model"),
+        ),
+        "risk_management_plan": lambda: system_prompts.get_risk_management_prompt(
+            req_summary,
+            req_summary.get("project_charter_summary"),
+            req_summary.get("business_model"),
+        ),
         "support_playbook": lambda: system_prompts.get_support_playbook_prompt(req_summary),
         "legal_compliance": lambda: system_prompts.get_legal_compliance_prompt(req_summary),
     }
