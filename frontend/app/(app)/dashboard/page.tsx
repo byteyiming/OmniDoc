@@ -1,81 +1,93 @@
 'use client';
-
+import { useState } from 'react';
 import { Bell, Plus, FileText, Bot, Clock, BarChart2 } from "lucide-react";
 import Link from 'next/link';
+import NewProjectModal from '@/components/modals/NewProjectModal';
 
 const DashboardPage = () => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   return (
-    <div className="p-8 animate-in">
-      {/* Header */}
-      <header className="flex items-center justify-between mb-10">
+    <>
+      <NewProjectModal open={isModalOpen} onOpenChange={setIsModalOpen} />
+      <div className="p-8 animate-in">
+        {/* Header */}
+        <header className="flex items-center justify-between mb-10">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+            <p className="text-gray-400">Tuesday, November 18, 2025</p>
+          </div>
+          <div className="flex items-center space-x-4">
+            <button className="relative text-gray-400 hover:text-white transition-colors">
+              <Bell size={24} />
+              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+              </span>
+            </button>
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center space-x-2 bg-primary hover:bg-primary-hover text-white font-semibold px-4 py-2.5 rounded-lg transition-colors shadow-lg shadow-primary/20"
+            >
+              <Plus size={20} />
+              <span>New Project</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Stat Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+          <StatCard icon={<FileText />} title="Total Projects" value="12" />
+          <StatCard icon={<Bot />} title="Docs Generated" value="1,240" />
+          <StatCard icon={<Clock />} title="Agent Hours" value="450h" />
+          <StatCard icon={<BarChart2 />} title="Avg. Quality" value="98%" />
+        </div>
+
+        {/* Recent Projects */}
         <div>
-          <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-          <p className="text-gray-400">Tuesday, November 18, 2025</p>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-white">Recent Projects</h2>
+            <button className="text-sm text-gray-400 bg-card px-3 py-1.5 rounded-md hover:bg-border transition-colors">
+              Sorted by Activity
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <ProjectCard
+              initial="Q"
+              name="Quantum Ledger"
+              status="Complete"
+              lastUpdated="2h ago"
+              fileCount={12}
+              agents={['architect', 'writer', 'critic']}
+            />
+            <ProjectCard
+              initial="N"
+              name="Neural Net API"
+              status="Generating"
+              lastUpdated="Just now"
+              fileCount={4}
+              agents={['architect', 'writer']}
+            />
+            <ProjectCard
+              initial="M"
+              name="Mars Colony OS"
+              status="Draft"
+              lastUpdated="1d ago"
+              fileCount={1}
+              agents={['architect']}
+            />
+          </div>
         </div>
-        <div className="flex items-center space-x-4">
-          <button className="relative text-gray-400 hover:text-white transition-colors">
-            <Bell size={24} />
-            <span className="absolute -top-1 -right-1 flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
-            </span>
-          </button>
-          <button className="flex items-center space-x-2 bg-primary hover:bg-primary-hover text-white font-semibold px-4 py-2.5 rounded-lg transition-colors shadow-lg shadow-primary/20">
-            <Plus size={20} />
-            <span>New Project</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-        <StatCard icon={<FileText />} title="Total Projects" value="12" />
-        <StatCard icon={<Bot />} title="Docs Generated" value="1,240" />
-        <StatCard icon={<Clock />} title="Agent Hours" value="450h" />
-        <StatCard icon={<BarChart2 />} title="Avg. Quality" value="98%" />
+        
+        {/* Floating Action Button for smaller screens */}
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="lg:hidden fixed bottom-6 right-6 bg-primary hover:bg-primary-hover text-white rounded-full p-4 shadow-lg shadow-primary/30"
+        >
+          <Plus size={24} />
+        </button>
       </div>
-
-      {/* Recent Projects */}
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-white">Recent Projects</h2>
-          <button className="text-sm text-gray-400 bg-card px-3 py-1.5 rounded-md hover:bg-border transition-colors">
-            Sorted by Activity
-          </button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <ProjectCard
-            initial="Q"
-            name="Quantum Ledger"
-            status="Complete"
-            lastUpdated="2h ago"
-            fileCount={12}
-            agents={['architect', 'writer', 'critic']}
-          />
-          <ProjectCard
-            initial="N"
-            name="Neural Net API"
-            status="Generating"
-            lastUpdated="Just now"
-            fileCount={4}
-            agents={['architect', 'writer']}
-          />
-          <ProjectCard
-            initial="M"
-            name="Mars Colony OS"
-            status="Draft"
-            lastUpdated="1d ago"
-            fileCount={1}
-            agents={['architect']}
-          />
-        </div>
-      </div>
-      
-      {/* Floating Action Button for smaller screens */}
-      <button className="lg:hidden fixed bottom-6 right-6 bg-primary hover:bg-primary-hover text-white rounded-full p-4 shadow-lg shadow-primary/30">
-        <Plus size={24} />
-      </button>
-    </div>
+    </>
   );
 };
 
