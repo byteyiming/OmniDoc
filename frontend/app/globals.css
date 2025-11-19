@@ -8,8 +8,45 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-open-sans);
   --font-mono: var(--font-geist-mono);
+  
+  /* Color Palette - UI Style Guide Compliance */
+  --color-primary: #007BFF;
+  --color-primary-hover: #0056b3;
+  --color-primary-light: #e7f3ff;
+  
+  --color-secondary: #6C757D;
+  --color-secondary-hover: #545b62;
+  --color-secondary-light: #f8f9fa;
+  
+  --color-accent: #28A745;
+  --color-accent-hover: #218838;
+  --color-accent-light: #d4edda;
+  
+  --color-neutral-white: #FFFFFF;
+  --color-neutral-light: #F8F9FA;
+  --color-neutral-medium: #ADB5BD;
+  --color-neutral-dark: #343A40;
+  
+  --color-border: #ADB5BD;
+  --color-border-focus: #007BFF;
+  --color-focus-ring: rgba(0, 123, 255, 0.25);
+  
+  /* Typography - Open Sans */
+  --font-size-h1: 32px;
+  --font-size-h2: 24px;
+  --font-size-h3: 20px;
+  --font-size-body: 16px;
+  --font-size-small: 14px;
+  
+  /* Spacing System - 8px based */
+  --spacing-1: 8px;
+  --spacing-2: 16px;
+  --spacing-3: 24px;
+  --spacing-4: 32px;
+  --spacing-5: 40px;
+  --spacing-6: 48px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,7 +59,31 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-open-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-size: var(--font-size-body);
+  line-height: 1.5;
+}
+
+/* Typography Utilities */
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-neutral-dark);
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-neutral-dark);
+}
+
+h3 {
+  font-size: var(--font-size-h3);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-neutral-dark);
 }
 
 /* Markdown prose styles */
