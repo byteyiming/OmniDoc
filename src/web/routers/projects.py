@@ -433,16 +433,16 @@ async def get_project_documents(
                 conn = None
                 try:
                     conn = cm._get_connection()
-                    cursor = conn.cursor(cursor_factory=RealDictCursor)
-                    cursor.execute("""
-                        SELECT content FROM agent_outputs 
-                        WHERE project_id = %s AND document_type = %s
-                        ORDER BY version DESC LIMIT 1
-                    """, (project_id, doc_id))
-                    row = cursor.fetchone()
-                    cursor.close()
-                    if row:
-                        content = row["content"]
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute("""
+                    SELECT content FROM agent_outputs 
+                    WHERE project_id = %s AND document_type = %s
+                    ORDER BY version DESC LIMIT 1
+                """, (project_id, doc_id))
+                row = cursor.fetchone()
+                cursor.close()
+                if row:
+                    content = row["content"]
                 finally:
                     if conn:
                         cm._put_connection(conn)

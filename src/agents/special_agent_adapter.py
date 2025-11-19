@@ -86,7 +86,7 @@ class SpecialAgentAdapter:
         # Update project_id if provided
         if project_id:
             self.project_id = project_id
-        
+
         # Save to database via context_manager
         if self.context_manager and self.project_id:
             try:
