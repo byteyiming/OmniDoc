@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Set
 
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from slowapi import Limiter
@@ -18,6 +18,7 @@ from src.utils.logger import get_logger
 from src.tasks.generation_tasks import generate_documents_task
 from src.tasks.celery_app import REDIS_AVAILABLE, check_redis_available
 from src.web.utils import parse_json_field
+from src.web.dependencies import get_context_manager, ContextManagerDep
 
 logger = get_logger(__name__)
 
@@ -101,7 +102,11 @@ class ProjectDocumentsResponse(BaseModel):
 
 @router.post("", response_model=ProjectCreateResponse, status_code=202)
 @apply_rate_limit("10/minute")  # 项目创建限制：10次/分钟
-async def create_project(request: Request, project_request: ProjectCreateRequest) -> ProjectCreateResponse:
+async def create_project(
+    request: Request,
+    project_request: ProjectCreateRequest,
+    cm: ContextManagerDep
+) -> ProjectCreateResponse:
     """Create a new documentation project"""
     # Validate input
     if not project_request.user_idea or not project_request.user_idea.strip():
@@ -113,9 +118,6 @@ async def create_project(request: Request, project_request: ProjectCreateRequest
     if not project_request.selected_documents:
         raise HTTPException(status_code=422, detail="Select at least one document to generate.")
 
-    if context_manager is None:
-        raise HTTPException(status_code=500, detail="Context manager not initialized.")
-
     # Sanitize user input (basic sanitization)
     user_idea = project_request.user_idea.strip()[:5000]
     
@@ -123,8 +125,8 @@ async def create_project(request: Request, project_request: ProjectCreateRequest
     # Remove duplicates while preserving order
     selected_documents = list(dict.fromkeys(project_request.selected_documents))
 
-    context_manager.create_project(project_id, user_idea)
-    context_manager.update_project_status(
+    cm.create_project(project_id, user_idea)
+    cm.update_project_status(
         project_id=project_id,
         status="in_progress",
         user_idea=user_idea,
@@ -207,7 +209,8 @@ BRICK_AND_MORTAR_DOCUMENTS = [
 @apply_rate_limit("10/minute")  # 实体店项目创建限制：10次/分钟
 async def create_brick_and_mortar_project(
     request: Request,
-    project_request: BrickAndMortarProjectRequest
+    project_request: BrickAndMortarProjectRequest,
+    cm: ContextManagerDep
 ) -> ProjectCreateResponse:
     """
     Create a new brick-and-mortar business documentation project.
@@ -244,9 +247,6 @@ async def create_brick_and_mortar_project(
     if len(project_request.user_idea) > 5000:
         raise HTTPException(status_code=422, detail="Project idea exceeds maximum length of 5000 characters.")
 
-    if context_manager is None:
-        raise HTTPException(status_code=500, detail="Context manager not initialized.")
-
     # Sanitize user input
     user_idea = project_request.user_idea.strip()[:5000]
     
@@ -257,8 +257,8 @@ async def create_brick_and_mortar_project(
     selected_documents = BRICK_AND_MORTAR_DOCUMENTS.copy()
 
     # Create project in database
-    context_manager.create_project(project_id, user_idea)
-    context_manager.update_project_status(
+    cm.create_project(project_id, user_idea)
+    cm.update_project_status(
         project_id=project_id,
         status="in_progress",
         user_idea=user_idea,
@@ -329,7 +329,11 @@ async def create_brick_and_mortar_project(
 
 @router.get("/{project_id}/status", response_model=ProjectStatusResponse)
 @apply_rate_limit("60/minute")  # 状态查询限制：60次/分钟（更宽松）
-async def get_project_status(request: Request, project_id: str) -> ProjectStatusResponse:
+async def get_project_status(
+    request: Request,
+    project_id: str,
+    cm: ContextManagerDep
+) -> ProjectStatusResponse:
     """
     Returns the project status including:
     - Current generation status (pending, in_progress, complete, failed)
@@ -351,11 +355,8 @@ async def get_project_status(request: Request, project_id: str) -> ProjectStatus
     # Validate project_id format
     if not project_id or not project_id.startswith("project_") or len(project_id) > 255:
         raise HTTPException(status_code=400, detail="Invalid project ID format.")
-    
-    if context_manager is None:
-        raise HTTPException(status_code=500, detail="Context manager not initialized.")
 
-    status_row = context_manager.get_project_status(project_id)
+    status_row = cm.get_project_status(project_id)
     if not status_row:
         raise HTTPException(status_code=404, detail="Project not found.")
 
@@ -385,6 +386,7 @@ async def get_project_documents(
     project_id: str,
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(50, ge=1, le=100, description="Number of documents per page"),
+    cm: ContextManagerDep = None
 ) -> ProjectDocumentsResponse:
     """
     Get all documents for a project with pagination support.
@@ -404,8 +406,8 @@ async def get_project_documents(
     if page_size < 1 or page_size > 100:
         raise HTTPException(status_code=400, detail="Page size must be between 1 and 100")
     
-    # Get context manager from app state or global variable
-    cm = getattr(request.app.state, "context_manager", None) or context_manager
+    # Get context manager from dependency injection or app state
+    cm = getattr(request.app.state, "context_manager", None)
     if cm is None:
         raise HTTPException(status_code=500, detail="Context manager not initialized.")
 
@@ -472,7 +474,12 @@ async def get_project_documents(
 
 @router.get("/{project_id}/documents/{document_id}", response_model=GeneratedDocument)
 @apply_rate_limit("60/minute")  # 单个文档查询限制：60次/分钟
-async def get_single_document(request: Request, project_id: str, document_id: str) -> GeneratedDocument:
+async def get_single_document(
+    request: Request,
+    project_id: str,
+    document_id: str,
+    cm: ContextManagerDep = None
+) -> GeneratedDocument:
     """
     Get a specific generated document by its ID.
     
@@ -496,8 +503,8 @@ async def get_single_document(request: Request, project_id: str, document_id: st
     if not document_id or len(document_id) > 255:
         raise HTTPException(status_code=400, detail="Invalid document ID format.")
     
-    # Get context manager from app state or global variable
-    cm = getattr(request.app.state, "context_manager", None) or context_manager
+    # Get context manager from dependency injection or app state
+    cm = getattr(request.app.state, "context_manager", None)
     if cm is None:
         raise HTTPException(status_code=500, detail="Context manager not initialized.")
 
@@ -558,7 +565,12 @@ async def get_single_document(request: Request, project_id: str, document_id: st
 
 @router.get("/{project_id}/documents/{document_id}/download")
 @apply_rate_limit("30/minute")  # 文档下载限制：30次/分钟（防止滥用）
-async def download_document(request: Request, project_id: str, document_id: str) -> FileResponse:
+async def download_document(
+    request: Request,
+    project_id: str,
+    document_id: str,
+    cm: ContextManagerDep = None
+) -> FileResponse:
     """
     Download a generated document as a file.
     

@@ -55,22 +55,26 @@ class DocumentCatalogResponse(BaseModel):
 
 
 @router.get("", response_model=DocumentCatalogResponse)
-async def get_document_templates() -> DocumentCatalogResponse:
+async def get_document_templates(request: Request) -> DocumentCatalogResponse:
     """
     Get all available document templates.
     
     Returns the complete catalog of document types that can be generated,
     including metadata such as dependencies, priority, and descriptions.
-    Results are cached for 24 hours to improve performance.
+    Uses cached definitions from app.state (loaded at startup).
     
     Returns:
         DocumentCatalogResponse with list of document templates
     
     Note:
         This endpoint is rate-limited to 100 requests per minute per IP.
-        Results are cached in Redis for 24 hours.
+        Document definitions are cached in app.state after startup.
     """
-    definitions = load_document_definitions()
+    # Use cached definitions from app.state if available
+    definitions = getattr(request.app.state, "document_definitions", None)
+    if definitions is None:
+        # Fallback to loading (shouldn't happen after startup)
+        definitions = load_document_definitions()
     generated_at: Optional[str] = None
     source: Optional[str] = None
 

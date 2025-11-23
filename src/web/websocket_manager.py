@@ -47,24 +47,19 @@ class WebSocketManager:
         self.redis_task = None
 
     async def connect_redis(self) -> None:
-        """Initialize Redis connection and start listener"""
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        """Initialize Redis connection and start listener with fallback"""
+        from src.utils.redis_client import get_redis_pool
+        
+        redis_pool = get_redis_pool()
+        
+        if not redis_pool:
+            logger.warning("⚠️ Redis not configured. WebSocket Manager will use local-only mode.")
+            self.redis_client = None
+            return
         
         try:
-            # SSL configuration for Upstash
-            ssl_context = None
-            if "upstash.io" in redis_url or redis_url.startswith("rediss://"):
-                if redis_url.startswith("redis://"):
-                    redis_url = redis_url.replace("redis://", "rediss://", 1)
-                ssl_context = ssl.create_default_context()
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
-
-            self.redis_client = redis.from_url(
-                redis_url,
-                decode_responses=True,
-                ssl_cert_reqs=ssl.CERT_NONE if ssl_context else None
-            )
+            # Use async client from pool
+            self.redis_client = await redis_pool.get_async_client()
             
             # Test connection
             await self.redis_client.ping()
@@ -77,6 +72,7 @@ class WebSocketManager:
             
         except Exception as e:
             logger.warning(f"⚠️ WebSocket Manager failed to connect to Redis: {e}. Falling back to local-only mode.")
+            logger.warning("Frontend will receive updates via polling fallback.")
             self.redis_client = None
 
     async def _redis_listener(self):
@@ -137,23 +133,36 @@ class WebSocketManager:
 
     async def send_progress(self, project_id: str, message: Dict[str, Any]) -> None:
         """
-        Send progress update.
-        If Redis is available, publish to Redis (which will trigger _broadcast_local via listener).
-        If not, broadcast locally directly.
+        Send progress update with rate limiting and fallback.
+        
+        If Redis is available and within rate limits, publish to Redis.
+        If Redis is rate-limited or unavailable, broadcast locally directly.
         """
+        from src.utils.redis_client import get_redis_pool
+        
         payload = {**message, "timestamp": datetime.now().isoformat()}
         
-        if self.redis_client:
-            try:
-                await self.redis_client.publish(
-                    f"projects:{project_id}:events",
-                    json.dumps(payload)
-                )
-                return
-            except Exception as e:
-                logger.error(f"Failed to publish to Redis: {e}")
+        redis_pool = get_redis_pool()
         
-        # Fallback to local broadcast if Redis failed or not configured
+        if redis_pool and self.redis_client:
+            try:
+                # Check rate limit before publishing
+                can_make, error_msg = redis_pool.check_rate_limit()
+                
+                if can_make:
+                    await self.redis_client.publish(
+                        f"projects:{project_id}:events",
+                        json.dumps(payload)
+                    )
+                    redis_pool.record_request()
+                    return
+                else:
+                    logger.debug(f"Redis rate limit reached for WebSocket: {error_msg}. Using local broadcast.")
+                    # Fall through to local broadcast
+            except Exception as e:
+                logger.debug(f"Failed to publish to Redis: {e}. Using local broadcast.")
+        
+        # Fallback to local broadcast if Redis failed, not configured, or rate-limited
         await self._broadcast_local(project_id, payload)
 
     async def _broadcast_local(self, project_id: str, payload: Dict[str, Any]) -> None:

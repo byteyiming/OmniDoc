@@ -46,7 +46,7 @@ from src.coordination.coordinator import WorkflowCoordinator
 from src.context.context_manager import ContextManager
 from src.utils.logger import get_logger
 from src.web.monitoring import increment_counter
-from src.web.routers import documents, projects, websocket
+from src.web.routers import documents, projects, websocket, metrics
 from src.web import health
 from src.web.routers.projects import set_context_manager, set_limiter as set_projects_limiter
 from src.web.routers.documents import set_limiter as set_documents_limiter
@@ -182,17 +182,24 @@ async def lifespan(app: FastAPI):
     context_manager = ContextManager()
     coordinator = WorkflowCoordinator(context_manager=context_manager)
     
-    # Set context manager and limiter for routers (dependency injection)
+    # Store in app state for dependency injection
+    app.state.context_manager = context_manager
+    app.state.limiter = limiter
+    
+    # Set context manager and limiter for routers (backward compatibility)
     set_context_manager(context_manager)
     set_projects_limiter(limiter)
     set_documents_limiter(limiter)
     
-    # Initialize WebSocket Redis connection
+    # Load and cache document catalog on startup
+    # This is already cached with @lru_cache, but we trigger load now
+    definitions = load_document_definitions()
+    app.state.document_definitions = definitions
+    logger.info(f"Loaded {len(definitions)} document definitions at startup")
+    
+    # Initialize WebSocket Redis connection with fallback
     from src.web.websocket_manager import websocket_manager
     await websocket_manager.connect_redis()
-    
-    # Load document catalog on startup
-    load_document_definitions()
     
     logger.info("OmniDoc API initialized successfully")
     yield
@@ -391,3 +398,4 @@ app.include_router(health.router)  # Health checks (no prefix for /health, /read
 app.include_router(documents.router)
 app.include_router(projects.router)
 app.include_router(websocket.router)
+app.include_router(metrics.router)  # Metrics and observability endpoints

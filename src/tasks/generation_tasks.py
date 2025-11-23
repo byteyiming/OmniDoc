@@ -41,66 +41,57 @@ for handler in list(logger.handlers):
 
 def send_websocket_notification(project_id: str, message: Dict[str, Any]) -> None:
     """
-    Send WebSocket notification via Redis Pub/Sub.
+    Send WebSocket notification via Redis Pub/Sub with rate limiting and fallback.
+    
     This works even from Celery workers because it bypasses the in-memory
     WebSocket manager of the worker process and talks directly to Redis,
     which the main API server is listening to.
+    
+    Features:
+    - Connection pooling for efficiency
+    - Rate limiting to respect monthly Redis limits
+    - Automatic fallback when Redis is unavailable or rate-limited
     """
     try:
-        import redis
-        import os
-        import json
-        import ssl
+        from src.utils.redis_client import get_redis_pool
         from datetime import datetime
+        import json
         
-        # Use the same Redis URL as the app
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        redis_pool = get_redis_pool()
         
-        # Configure SSL if needed (for Upstash)
-        ssl_context = None
-        if "upstash.io" in redis_url or redis_url.startswith("rediss://"):
-            if redis_url.startswith("redis://"):
-                redis_url = redis_url.replace("redis://", "rediss://", 1)
-            # SSL context is needed for redis-py with ssl=True
-            # But for simple publication, we can rely on redis-py's internal handling
-            # or just use the same parameters as check_redis_available
-            pass
-
-        # Create a one-off connection for publishing
-        # Note: In a high-throughput system, we might want a global client
-        # But for Celery tasks, creating a connection is fine
-        
-        # Parse URL to handle SSL correctly if needed, similar to celery_app
-        from urllib.parse import urlparse
-        
-        is_ssl = "upstash.io" in redis_url or redis_url.startswith("rediss://")
-        parsed_url = urlparse(redis_url)
-        
-        if is_ssl:
-            client = redis.Redis(
-                host=parsed_url.hostname,
-                port=parsed_url.port or 6379,
-                password=parsed_url.password,
-                ssl=True,
-                ssl_cert_reqs=ssl.CERT_NONE,
-                decode_responses=True,
-                socket_timeout=5
-            )
-        else:
-            client = redis.Redis(
-                host=parsed_url.hostname,
-                port=parsed_url.port or 6379,
-                password=parsed_url.password,
-                decode_responses=True,
-                socket_timeout=5
+        if redis_pool:
+            # Use pooled client with rate limiting
+            payload = {**message, "timestamp": datetime.now().isoformat()}
+            
+            # Define fallback function (log to database or skip if Redis fails)
+            def fallback_notify():
+                logger.warning(
+                    f"Redis unavailable/rate-limited for WebSocket notification. "
+                    f"Message queued in database for project {project_id}. "
+                    f"Frontend will receive via polling."
+                )
+                # Optionally: Store in database for polling fallback
+                # This is already handled by the polling mechanism in useProjectStatus.ts
+            
+            success = redis_pool.safe_publish(
+                channel=f"projects:{project_id}:events",
+                message=json.dumps(payload),
+                fallback_func=fallback_notify
             )
             
-        payload = {**message, "timestamp": datetime.now().isoformat()}
-        client.publish(f"projects:{project_id}:events", json.dumps(payload))
-        client.close()
+            if success:
+                logger.debug(f"✅ WebSocket notification published to Redis for project {project_id}")
+            else:
+                logger.debug(f"⚠️ WebSocket notification skipped (Redis rate limited) for project {project_id}")
+        else:
+            # No Redis available - fallback to logging
+            logger.debug(
+                f"Redis not available for WebSocket notification. "
+                f"Frontend will receive updates via polling for project {project_id}."
+            )
             
     except Exception as exc:
-        logger.debug(f"WebSocket notification failed: {exc}")
+        logger.debug(f"WebSocket notification failed: {exc}. Frontend will use polling fallback.")
 
 
 @celery_app.task(

@@ -23,6 +23,7 @@ from src.config.document_catalog import (
 from src.config.settings import get_settings
 from src.context.context_manager import ContextManager
 from src.utils.logger import get_logger
+from src.coordination.metrics import get_metrics, clear_metrics
 
 logger = get_logger(__name__)
 
@@ -519,6 +520,10 @@ Issues Identified:
         
         workflow_start_time = time.time()
         logger.info(f"🚀 Starting PARALLEL workflow [Project: {project_id}] [Total: {total}]")
+        
+        # Initialize metrics tracking
+        metrics = get_metrics(project_id)
+        metrics.total_documents = total
 
         if progress_callback:
             await progress_callback({
@@ -529,7 +534,11 @@ Issues Identified:
             })
 
         # Loop until all documents are processed
+        wave_number = 0
         while pending_docs:
+            wave_number += 1
+            wave_start_time = time.time()
+            
             # Find documents whose dependencies are all met
             ready_batch = []
             for doc_id in pending_docs:
@@ -552,7 +561,11 @@ Issues Identified:
             # Sort batch to be deterministic (e.g. by index in execution_plan) to reduce chaos
             ready_batch.sort(key=lambda x: execution_plan.index(x))
             
-            logger.info(f"⚡ Processing parallel batch: {ready_batch}")
+            logger.info(f"⚡ Processing parallel batch {wave_number}: {ready_batch}")
+            
+            # Record metrics for this wave
+            for doc_id in ready_batch:
+                metrics.record_document_start(doc_id)
             
             # Execute batch in parallel
             tasks = []
@@ -568,15 +581,18 @@ Issues Identified:
                 ))
             
             # Wait for all in batch to complete
-            # We use return_exceptions=False to fail fast if one crashes, or True to continue?
-            # Existing logic failed hard on critical docs but skipped others.
-            # Let's try to run all, if exceptions occur, handle them.
+            # We use return_exceptions=True to continue even if some fail
             batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            wave_duration = time.time() - wave_start_time
             
             for i, res in enumerate(batch_results):
                 doc_id = ready_batch[i]
                 if isinstance(res, Exception):
                     logger.error(f"Error generating {doc_id}: {res}")
+                    # Record failure in metrics
+                    metrics.record_document_complete(doc_id, success=False)
+                    
                     # If a doc fails, we cannot generate its dependents.
                     # We remove it from pending but do NOT add to completed.
                     # This will naturally block dependents.
@@ -595,6 +611,9 @@ Issues Identified:
                     generated_docs[d_id] = d_result
                     completed_docs.add(d_id)
                     pending_docs.remove(d_id)
+                    
+                    # Record success in metrics
+                    metrics.record_document_complete(d_id, success=True)
                     
                     # Add to results
                     definition = self.definitions.get(d_id)
@@ -623,9 +642,30 @@ Issues Identified:
                         results=results,
                         selected_documents=selected_documents,
                     )
+            
+            # Calculate parallel efficiency after all documents in batch have completed
+            # Sum up actual durations of successfully completed documents in this wave
+            sequential_estimate = sum(
+                metrics.document_times.get(doc_id, {}).get("duration", 0)
+                for doc_id in ready_batch
+                if doc_id in metrics.document_times and metrics.document_times[doc_id].get("duration") is not None
+            )
+            parallel_efficiency = (sequential_estimate / wave_duration * 100) if wave_duration > 0 and sequential_estimate > 0 else 0
+            
+            # Record wave metrics
+            metrics.record_wave_execution(
+                wave_number=wave_number,
+                documents=ready_batch,
+                execution_time=wave_duration,
+                parallel_efficiency=parallel_efficiency
+            )
 
         # Finalize
         workflow_duration = time.time() - workflow_start_time
+        
+        # Log metrics summary
+        metrics.log_summary()
+        
         logger.info(f"🎉 Workflow completed in {workflow_duration:.2f}s. Generated {len(completed_docs)}/{total} docs.")
         
         results["summary"] = {
@@ -633,6 +673,7 @@ Issues Identified:
             "generated_at": datetime.now().isoformat(),
             "total_documents": len(completed_docs),
             "selected_documents": selected_documents,
+            "metrics": metrics.get_summary(),  # Include metrics in results
         }
         
         self.context_manager.update_project_status(
@@ -643,5 +684,8 @@ Issues Identified:
             results=results,
             selected_documents=selected_documents,
         )
+        
+        # Clean up metrics
+        clear_metrics(project_id)
 
         return results
