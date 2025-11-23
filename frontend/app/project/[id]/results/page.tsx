@@ -10,12 +10,6 @@ import Button from '@/components/ui/Button';
 import EmptyState from '@/components/EmptyState';
 import { ContentAreaSkeleton } from '@/components/ui/Skeleton';
 
-// SWR fetcher function
-const fetcher = async (projectId: string) => {
-  const response = await getProjectDocuments(projectId);
-  return response.documents;
-};
-
 export default function ProjectResultsPage() {
   const params = useParams();
   const router = useRouter();
@@ -23,10 +17,16 @@ export default function ProjectResultsPage() {
   const { t } = useI18n();
   const [shareCopied, setShareCopied] = useState(false);
 
+  // SWR fetcher function - defined inside component to capture projectId from closure
+  const fetcher = async (key: string) => {
+    const response = await getProjectDocuments(projectId);
+    return response.documents;
+  };
+
   // Use SWR for data fetching with caching and revalidation
   const { data: documents = [], error, isLoading: loading } = useSWR<GeneratedDocument[]>(
     projectId ? `project-${projectId}-documents` : null,
-    () => fetcher(projectId),
+    fetcher,
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: true,

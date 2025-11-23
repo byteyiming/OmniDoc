@@ -88,9 +88,9 @@ class ParallelExecutionMetrics:
             (sequential_time / total_time) * 100 if total_time > 0 else 0
         )
         
-        # Calculate average wave size
+        # Calculate average wave size (number of documents per wave)
         avg_wave_size = (
-            sum(w["wave_number"] for w in self.wave_executions) / len(self.wave_executions)
+            sum(len(w["documents"]) for w in self.wave_executions) / len(self.wave_executions)
             if self.wave_executions else 0
         )
         

@@ -350,80 +350,80 @@ Issues Identified:
         """
         Generate a single document. Helper for parallel execution.
         """
-        definition = self.definitions.get(document_id)
-        if not definition:
+            definition = self.definitions.get(document_id)
+            if not definition:
             logger.error("Unknown document id '%s' [Project: %s]", document_id, project_id)
             raise ValueError(f"Unknown document id '{document_id}'.")
 
-        agent = self.agents.get(document_id)
-        if not agent:
-            logger.error("No agent available for document '%s' [Project: %s]", document_id, project_id)
-            raise ValueError(f"No agent available for document '{document_id}'.")
+            agent = self.agents.get(document_id)
+            if not agent:
+                logger.error("No agent available for document '%s' [Project: %s]", document_id, project_id)
+                raise ValueError(f"No agent available for document '{document_id}'.")
 
         # Build dependency payload
-        all_dependencies = get_all_dependencies(document_id)
-        
+            all_dependencies = get_all_dependencies(document_id)
+            
         # Check for missing dependencies
-        missing_dependencies = [
-            dep for dep in all_dependencies
-            if dep not in generated_docs
-        ]
-        
-        if missing_dependencies:
-            logger.warning(
+            missing_dependencies = [
+                dep for dep in all_dependencies
+                if dep not in generated_docs
+            ]
+            
+            if missing_dependencies:
+                logger.warning(
                 "⚠️ Missing dependencies for document %s: %s [Project: %s]. Continuing.",
                 document_id, missing_dependencies, project_id
             )
-            if progress_callback:
+                if progress_callback:
                 await progress_callback({
-                    "type": "warning",
-                    "project_id": project_id,
-                    "document_id": document_id,
-                    "name": definition.name,
+                            "type": "warning",
+                            "project_id": project_id,
+                            "document_id": document_id,
+                            "name": definition.name,
                     "message": f"Missing dependencies: {', '.join(missing_dependencies)}.",
-                    "missing_dependencies": missing_dependencies,
+                            "missing_dependencies": missing_dependencies,
                 })
-
-        dependency_payload = {
+            
+            dependency_payload = {
             dep: generated_docs[dep] for dep in all_dependencies if dep in generated_docs
-        }
-        
+            }
+            
         # Add implicit context for certain documents
-        if not dependency_payload and document_id in ["gtm_strategy", "marketing_plan"]:
-            for useful_doc_id in ["project_charter", "business_model", "requirements"]:
-                if useful_doc_id in generated_docs:
-                    dependency_payload[useful_doc_id] = generated_docs[useful_doc_id]
+            if not dependency_payload and document_id in ["gtm_strategy", "marketing_plan"]:
+                for useful_doc_id in ["project_charter", "business_model", "requirements"]:
+                    if useful_doc_id in generated_docs:
+                        dependency_payload[useful_doc_id] = generated_docs[useful_doc_id]
 
-        if progress_callback:
+            if progress_callback:
             await progress_callback({
-                "type": "document_started",
-                "project_id": project_id,
-                "document_id": document_id,
-                "name": definition.name,
+                        "type": "document_started",
+            "project_id": project_id,
+                        "document_id": document_id,
+                        "name": definition.name,
                 "index": str(completed_count + 1), # Approximate index
-                "total": str(total),
+                        "total": str(total),
             })
 
-        output_rel_path = f"{project_id}/{document_id}.md"
-        
-        if isinstance(agent, SpecialAgentAdapter):
-            agent.project_id = project_id
-            agent.context_manager = self.context_manager
-        
-        doc_start_time = time.time()
-        try:
+            output_rel_path = f"{project_id}/{document_id}.md"
+            
+            if isinstance(agent, SpecialAgentAdapter):
+                agent.project_id = project_id
+                agent.context_manager = self.context_manager
+            
+            doc_start_time = time.time()
+            try:
             logger.info(f"📝 Starting generation for {document_id} [Project: {project_id}]")
             document_timeout = 1800
             
-            document_result = await asyncio.wait_for(
-                agent.generate_and_save(
-                    user_idea=user_idea,
-                    dependency_documents=dependency_payload,
-                    output_rel_path=output_rel_path,
-                    project_id=project_id,
-                ),
-                timeout=document_timeout
-            )
+                    document_result = await asyncio.wait_for(
+                        agent.generate_and_save(
+                            user_idea=user_idea,
+                            dependency_documents=dependency_payload,
+                            output_rel_path=output_rel_path,
+                            project_id=project_id,
+                        ),
+                        timeout=document_timeout
+                    )
             
             # Quality Review
             original_content = document_result.get("content", "")
@@ -598,13 +598,8 @@ Issues Identified:
                     # This will naturally block dependents.
                     pending_docs.remove(doc_id)
                     
-                    # Update status as failed for this doc
-                    self.context_manager.update_project_status(
-                        project_id=project_id,
-                        status="failed", # Or partial?
-                        user_idea=user_idea,
-                        error=f"Failed to generate {doc_id}: {str(res)}"
-                    )
+                    # Don't update project status here - wait until all waves complete
+                    # to determine final status (complete, partial_failure, or failed)
                 else:
                     # Success
                     d_id, d_result = res
@@ -626,23 +621,23 @@ Issues Identified:
                     if definition:
                         results["documents"].append({
                             "id": d_id,
-                            "name": definition.name,
-                            "category": definition.category,
+                    "name": definition.name,
+                    "category": definition.category,
                             "file_path": d_result.get("file_path", ""),
                             "generated_at": d_result.get("generated_at"),
-                            "dependencies": definition.dependencies,
+                    "dependencies": definition.dependencies,
                         })
                     
                     # Update status incrementally
-                    self.context_manager.update_project_status(
-                        project_id=project_id,
-                        status="in_progress",
+            self.context_manager.update_project_status(
+                project_id=project_id,
+                status="in_progress",
                         user_idea=user_idea,
                         completed_agents=list(completed_docs),
-                        results=results,
-                        selected_documents=selected_documents,
-                    )
-            
+                results=results,
+                selected_documents=selected_documents,
+            )
+
             # Calculate parallel efficiency after all documents in batch have completed
             # Sum up actual durations of successfully completed documents in this wave
             sequential_estimate = sum(
@@ -666,26 +661,45 @@ Issues Identified:
         # Log metrics summary
         metrics.log_summary()
         
-        logger.info(f"🎉 Workflow completed in {workflow_duration:.2f}s. Generated {len(completed_docs)}/{total} docs.")
+        # Determine final status based on completed vs failed documents
+        total_completed = len(completed_docs)
+        total_failed = metrics.failed_documents
+        final_status = "complete"
+        error_message = None
         
+        if total_completed == 0 and total_failed > 0:
+            # All documents failed
+            final_status = "failed"
+            error_message = f"All {total_failed} document(s) failed to generate"
+        elif total_completed < total:
+            # Some documents failed or were blocked by dependencies
+            final_status = "partial_failure"
+            if total_failed > 0:
+                error_message = f"{total_failed} document(s) failed to generate. {total_completed}/{total} completed."
+            else:
+                error_message = f"{total_completed}/{total} documents completed"
+        
+        logger.info(f"🎉 Workflow completed in {workflow_duration:.2f}s. Generated {total_completed}/{total} docs. Failed: {total_failed}")
+
         results["summary"] = {
             "project_id": project_id,
             "generated_at": datetime.now().isoformat(),
-            "total_documents": len(completed_docs),
+            "total_documents": total_completed,
             "selected_documents": selected_documents,
             "metrics": metrics.get_summary(),  # Include metrics in results
         }
         
         self.context_manager.update_project_status(
             project_id=project_id,
-            status="complete" if len(completed_docs) == total else "partial_failure",
+            status=final_status,
             user_idea=user_idea,
             completed_agents=list(completed_docs),
             results=results,
             selected_documents=selected_documents,
+            error=error_message
         )
         
         # Clean up metrics
         clear_metrics(project_id)
-
+            
         return results

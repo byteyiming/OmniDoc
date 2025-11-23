@@ -386,7 +386,7 @@ async def get_project_documents(
     project_id: str,
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(50, ge=1, le=100, description="Number of documents per page"),
-    cm: ContextManagerDep = None
+    cm: ContextManagerDep
 ) -> ProjectDocumentsResponse:
     """
     Get all documents for a project with pagination support.
@@ -405,11 +405,6 @@ async def get_project_documents(
         raise HTTPException(status_code=400, detail="Page number must be >= 1")
     if page_size < 1 or page_size > 100:
         raise HTTPException(status_code=400, detail="Page size must be between 1 and 100")
-    
-    # Get context manager from dependency injection or app state
-    cm = getattr(request.app.state, "context_manager", None)
-    if cm is None:
-        raise HTTPException(status_code=500, detail="Context manager not initialized.")
 
     status_row = cm.get_project_status(project_id)
     if not status_row:
@@ -478,7 +473,7 @@ async def get_single_document(
     request: Request,
     project_id: str,
     document_id: str,
-    cm: ContextManagerDep = None
+    cm: ContextManagerDep
 ) -> GeneratedDocument:
     """
     Get a specific generated document by its ID.
@@ -502,11 +497,6 @@ async def get_single_document(
         raise HTTPException(status_code=400, detail="Invalid project ID format.")
     if not document_id or len(document_id) > 255:
         raise HTTPException(status_code=400, detail="Invalid document ID format.")
-    
-    # Get context manager from dependency injection or app state
-    cm = getattr(request.app.state, "context_manager", None)
-    if cm is None:
-        raise HTTPException(status_code=500, detail="Context manager not initialized.")
 
     catalog_doc = get_document_by_id(document_id)
     status_row = cm.get_project_status(project_id)
@@ -569,7 +559,7 @@ async def download_document(
     request: Request,
     project_id: str,
     document_id: str,
-    cm: ContextManagerDep = None
+    cm: ContextManagerDep
 ) -> FileResponse:
     """
     Download a generated document as a file.

@@ -129,7 +129,7 @@ export function PlaceholdersAndVanishInput({
           type="submit"
           aria-label={isSubmitting ? 'Submitting project idea' : 'Submit project idea'}
           disabled={disabled || !value.trim() || isSubmitting}
-          onClick={handleSendClick}
+          onClick={onSendClick ? handleSendClick : undefined}
           className={cn(
             'absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-full z-10',
             'bg-[#007BFF] text-white transition-colors',
