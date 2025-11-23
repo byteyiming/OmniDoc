@@ -42,6 +42,23 @@ def set_limiter(lim: Limiter) -> None:
     limiter = lim
 
 
+def apply_rate_limit(limit_str: str):
+    """
+    Helper decorator to apply rate limiting if limiter is available.
+    
+    Args:
+        limit_str: Rate limit string (e.g., "10/minute", "60/minute")
+    
+    Returns:
+        Decorator function
+    """
+    def decorator(func):
+        if limiter:
+            return limiter.limit(limit_str)(func)
+        return func
+    return decorator
+
+
 class ProjectCreateRequest(BaseModel):
     user_idea: str = Field(..., min_length=1, max_length=5000)
     selected_documents: List[str] = Field(default_factory=list)
@@ -83,6 +100,7 @@ class ProjectDocumentsResponse(BaseModel):
 
 
 @router.post("", response_model=ProjectCreateResponse, status_code=202)
+@apply_rate_limit("10/minute")  # 项目创建限制：10次/分钟
 async def create_project(request: Request, project_request: ProjectCreateRequest) -> ProjectCreateResponse:
     """Create a new documentation project"""
     # Validate input
@@ -186,6 +204,7 @@ BRICK_AND_MORTAR_DOCUMENTS = [
 
 
 @router.post("/brick-and-mortar", response_model=ProjectCreateResponse, status_code=202)
+@apply_rate_limit("10/minute")  # 实体店项目创建限制：10次/分钟
 async def create_brick_and_mortar_project(
     request: Request,
     project_request: BrickAndMortarProjectRequest
@@ -309,10 +328,9 @@ async def create_brick_and_mortar_project(
 
 
 @router.get("/{project_id}/status", response_model=ProjectStatusResponse)
+@apply_rate_limit("60/minute")  # 状态查询限制：60次/分钟（更宽松）
 async def get_project_status(request: Request, project_id: str) -> ProjectStatusResponse:
     """
-    Get the current status of a project.
-    
     Returns the project status including:
     - Current generation status (pending, in_progress, complete, failed)
     - List of selected documents
@@ -361,6 +379,7 @@ async def get_project_status(request: Request, project_id: str) -> ProjectStatus
 
 
 @router.get("/{project_id}/documents", response_model=ProjectDocumentsResponse)
+@apply_rate_limit("60/minute")  # 文档列表查询限制：60次/分钟
 async def get_project_documents(
     request: Request,
     project_id: str,
@@ -468,6 +487,7 @@ async def get_project_documents(
 
 
 @router.get("/{project_id}/documents/{document_id}", response_model=GeneratedDocument)
+@apply_rate_limit("60/minute")  # 单个文档查询限制：60次/分钟
 async def get_single_document(request: Request, project_id: str, document_id: str) -> GeneratedDocument:
     """
     Get a specific generated document by its ID.
@@ -569,6 +589,7 @@ async def get_single_document(request: Request, project_id: str, document_id: st
 
 
 @router.get("/{project_id}/documents/{document_id}/download")
+@apply_rate_limit("30/minute")  # 文档下载限制：30次/分钟（防止滥用）
 async def download_document(request: Request, project_id: str, document_id: str) -> FileResponse:
     """
     Download a generated document as a file.
