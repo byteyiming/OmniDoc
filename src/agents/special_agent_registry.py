@@ -9,6 +9,9 @@ from src.agents.document_improver_agent import DocumentImproverAgent
 from src.agents.format_converter_agent import FormatConverterAgent
 from src.agents.quality_reviewer_agent import QualityReviewerAgent
 from src.agents.requirements_analyst import RequirementsAnalyst
+from src.agents.marketing_plan_agent import MarketingPlanAgent
+from src.agents.feature_roadmap_agent import FeatureRoadmapAgent
+from src.agents.risk_management_agent import RiskManagementAgent
 
 # Map document IDs to special agent classes
 SPECIAL_AGENT_REGISTRY: Dict[str, Type[BaseAgent]] = {
@@ -17,6 +20,10 @@ SPECIAL_AGENT_REGISTRY: Dict[str, Type[BaseAgent]] = {
     "document_improver": DocumentImproverAgent,
     "format_converter": FormatConverterAgent,
     "code_analyst": CodeAnalystAgent,
+    "gtm_strategy": MarketingPlanAgent,
+    "marketing_plan": MarketingPlanAgent,
+    "feature_roadmap": FeatureRoadmapAgent,
+    "risk_management_plan": RiskManagementAgent,
 }
 
 # Map special_key (from config) to document IDs
@@ -26,6 +33,9 @@ SPECIAL_KEY_TO_DOC_ID: Dict[str, str] = {
     "document_improver": "document_improver",
     "format_converter": "format_converter",
     "code_analyst": "code_analyst",
+    "marketing_plan": "marketing_plan",
+    "feature_roadmap": "feature_roadmap",
+    "risk_management_plan": "risk_management_plan",
 }
 
 

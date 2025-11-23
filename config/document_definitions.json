@@ -726,7 +726,7 @@
       "category": "User / Product Analytics",
       "description": "Go-to-market (GTM) strategy",
       "prompt_key": "gtm_strategy_prompt",
-      "agent_class": "generic",
+      "agent_class": "special",
       "special_key": "marketing_plan",
       "dependencies": [
         "feature_roadmap",
@@ -1047,7 +1047,7 @@
       "category": "Project Management / Planning",
       "description": "Risk management and mitigation plan",
       "prompt_key": "risk_management_plan_prompt",
-      "agent_class": "generic",
+      "agent_class": "special",
       "special_key": "risk_management_plan",
       "dependencies": [
         "project_charter",
@@ -1116,7 +1116,7 @@
       "category": "Project Management / Planning",
       "description": "Feature roadmap and iteration plan",
       "prompt_key": "feature_roadmap_prompt",
-      "agent_class": "generic",
+      "agent_class": "special",
       "special_key": "feature_roadmap",
       "dependencies": [
         "requirements",
@@ -1516,7 +1516,7 @@
         "operations_plan",
         "financial_model"
       ],
-      "agent_class": "generic",
+      "agent_class": "special",
       "special_key": "risk_management_plan",
       "prompt_key": "risk_management_plan_prompt",
       "status": "Not Started",

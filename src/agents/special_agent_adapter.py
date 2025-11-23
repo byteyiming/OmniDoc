@@ -47,20 +47,58 @@ class SpecialAgentAdapter:
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, self.agent.generate, user_idea)
 
-        # For other special agents, try to call generate with user_idea
+        # For other special agents, try to call generate with user_idea and dependency_documents
         # Most special agents have different signatures, so we'll need to adapt
         if hasattr(self.agent, "generate"):
             import asyncio
 
             loop = asyncio.get_event_loop()
-            # Try calling with just user_idea first
+            # Try calling with user_idea and dependency_documents first (for new agents)
             try:
-                return await loop.run_in_executor(None, self.agent.generate, user_idea)
-            except TypeError:
-                # If that fails, try with dependency_documents
+                # Check if agent accepts dependency_documents parameter
+                import inspect
+                sig = inspect.signature(self.agent.generate)
+                params = list(sig.parameters.keys())
+                
+                if "dependency_documents" in params or "requirements_summary" in params:
+                    # Agent supports dependency documents - build requirements_summary from context
+                    requirements_summary = {"user_idea": user_idea}
+                    
+                    # Extract dependency content
+                    project_charter_summary = None
+                    business_model_summary = None
+                    
+                    if dependency_documents:
+                        if "project_charter" in dependency_documents:
+                            project_charter_summary = dependency_documents["project_charter"].get("content", "")
+                        if "business_model" in dependency_documents:
+                            business_model_summary = dependency_documents["business_model"].get("content", "")
+                        if "requirements" in dependency_documents:
+                            # Extract requirements data if available
+                            req_content = dependency_documents["requirements"].get("content", "")
+                            if req_content:
+                                requirements_summary["requirements_document"] = req_content
+                    
+                    # Call with full parameters
+                    return await loop.run_in_executor(
+                        None,
+                        lambda: self.agent.generate(
+                            user_idea,
+                            requirements_summary=requirements_summary,
+                            project_charter_summary=project_charter_summary,
+                            business_model_summary=business_model_summary,
+                            dependency_documents=dependency_documents
+                        )
+                    )
+                else:
+                    # Agent only accepts user_idea
+                    return await loop.run_in_executor(None, self.agent.generate, user_idea)
+            except TypeError as e:
+                # If that fails, try with just user_idea
                 logger.warning(
-                    "Special agent %s may not support dependency_documents, using user_idea only",
+                    "Special agent %s may not support dependency_documents, using user_idea only: %s",
                     type(self.agent).__name__,
+                    e
                 )
                 return await loop.run_in_executor(None, self.agent.generate, user_idea)
 
@@ -93,8 +131,18 @@ class SpecialAgentAdapter:
                 from src.context.shared_context import AgentType, DocumentStatus, AgentOutput
                 
                 # Determine agent type from definition
-                agent_type = AgentType.REQUIREMENTS_ANALYST if isinstance(self.agent, RequirementsAnalyst) else None
+                # Map document IDs to AgentType enum values
+                agent_type = None
+                if isinstance(self.agent, RequirementsAnalyst):
+                    agent_type = AgentType.REQUIREMENTS_ANALYST
+                elif self.definition.id == "gtm_strategy" or self.definition.id == "marketing_plan":
+                    agent_type = AgentType.MARKETING_PLAN
+                else:
+                    # For other special agents (feature_roadmap, risk_management_plan, etc.)
+                    # Use GENERIC_DOCUMENTATION since they don't have specific AgentType values
+                    agent_type = AgentType.GENERIC_DOCUMENTATION
                 
+                # Always save output for all special agents
                 if agent_type:
                     output = AgentOutput(
                         agent_type=agent_type,
