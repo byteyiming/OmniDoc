@@ -166,7 +166,15 @@ class RedisClientPool:
     Manages a pool of Redis connections to minimize overhead and respect rate limits.
     """
     
-    def __init__(self, redis_url: str, max_connections: int = 10, use_ssl: bool = False):
+    def __init__(self, redis_url: str, max_connections: int = 5, use_ssl: bool = False):
+        """
+        Initialize Redis client pool.
+        
+        Args:
+            redis_url: Redis connection URL
+            max_connections: Maximum connections in pool (default 5, reduced for Upstash compatibility)
+            use_ssl: Whether to use SSL/TLS
+        """
         self.redis_url = redis_url
         self.max_connections = max_connections
         self.use_ssl = use_ssl
@@ -188,21 +196,33 @@ class RedisClientPool:
             })
         
         self._sync_pool: Optional[redis.ConnectionPool] = None
+        self._sync_client: Optional[redis.Redis] = None  # Single reusable client instance
         self._async_client: Optional[redis_async.Redis] = None
         self._rate_limiter = get_redis_rate_limiter()
         self._lock = threading.Lock()
     
     def get_sync_client(self) -> redis.Redis:
-        """Get a synchronous Redis client from pool"""
-        if self._sync_pool is None:
+        """
+        Get a synchronous Redis client from pool (reused singleton).
+        
+        Uses a single client instance with connection pooling to avoid
+        connection exhaustion issues with Upstash Redis.
+        """
+        if self._sync_client is None:
             with self._lock:
-                if self._sync_pool is None:
+                if self._sync_client is None:
+                    # Reduced max_connections for Upstash compatibility
+                    # Also add connection retry settings
                     self._sync_pool = redis.ConnectionPool(
                         max_connections=self.max_connections,
+                        retry_on_timeout=True,
+                        health_check_interval=30,
                         **self.connection_params
                     )
+                    # Create a single reusable client instance
+                    self._sync_client = redis.Redis(connection_pool=self._sync_pool)
         
-        return redis.Redis(connection_pool=self._sync_pool)
+        return self._sync_client
     
     async def get_async_client(self) -> redis_async.Redis:
         """Get an async Redis client"""
@@ -264,15 +284,34 @@ class RedisClientPool:
         
         try:
             client = self.get_sync_client()
+            
             # Ensure message is bytes for Redis
             if isinstance(message, str):
                 import json
                 message = json.dumps(message) if not message.startswith("{") else message
                 message = message.encode('utf-8')
             
-            client.publish(channel, message)
-            self.record_request()
-            return True
+            # Try to publish with connection retry
+            try:
+                client.publish(channel, message)
+                self.record_request()
+                return True
+            except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError, OSError) as conn_err:
+                error_str = str(conn_err).lower()
+                if "too many connections" in error_str or "connection" in error_str:
+                    logger.warning(
+                        f"Redis connection pool exhausted. "
+                        f"Pool size: {self.max_connections}, Active: {self._sync_pool.created_connections if self._sync_pool else 'unknown'}. "
+                        f"Using fallback."
+                    )
+                    if fallback_func:
+                        try:
+                            fallback_func()
+                        except Exception as e:
+                            logger.error(f"Fallback function failed: {e}")
+                    return False
+                raise
+        
         except redis.exceptions.ResponseError as e:
             error_str = str(e).lower()
             if "max requests limit exceeded" in error_str:
@@ -285,7 +324,14 @@ class RedisClientPool:
                 return False
             raise
         except Exception as e:
-            logger.error(f"Redis publish failed: {e}. Using fallback.")
+            error_str = str(e).lower()
+            if "too many connections" in error_str:
+                logger.warning(
+                    f"Redis connection pool exhausted: {e}. "
+                    f"Consider reducing concurrent operations or increasing pool size. Using fallback."
+                )
+            else:
+                logger.error(f"Redis publish failed: {e}. Using fallback.")
             if fallback_func:
                 try:
                     fallback_func()
@@ -322,7 +368,10 @@ def get_redis_pool() -> Optional[RedisClientPool]:
             return None
         
         use_ssl = "upstash.io" in redis_url or redis_url.startswith("rediss://")
-        _redis_pool = RedisClientPool(redis_url, max_connections=10, use_ssl=use_ssl)
+        # Reduced max_connections to 5 for Upstash compatibility
+        # Upstash free tier has connection limits, and we want to avoid "Too many connections" errors
+        max_conns = int(os.getenv("REDIS_MAX_CONNECTIONS", "5"))
+        _redis_pool = RedisClientPool(redis_url, max_connections=max_conns, use_ssl=use_ssl)
     
     return _redis_pool
 
