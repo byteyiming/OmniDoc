@@ -105,12 +105,13 @@ export default function DocumentViewer({
     <div className="flex flex-col h-full w-full md:flex-row" style={{ height: '100%', overflow: 'hidden' }}>
       {/* Document List Sidebar - Scrollable */}
       {/* Mobile: Full width with max height, Desktop: Fixed width sidebar */}
-      <div 
+      <aside
+        aria-label="Document list"
         className="w-full md:w-64 flex-shrink-0 border-b md:border-b-0 md:border-r border-gray-200 bg-gray-50 flex flex-col h-auto max-h-[40vh] md:h-full md:max-h-none overflow-hidden"
       >
         <div className="p-3 md:p-4 flex-shrink-0 border-b border-gray-200">
-          <h3 className="text-base md:text-lg font-semibold text-gray-900">Documents</h3>
-          <div className="mt-1 md:mt-2 text-xs md:text-sm text-gray-500">
+          <h2 className="text-base md:text-lg font-semibold text-gray-900">Documents</h2>
+          <div className="mt-1 md:mt-2 text-xs md:text-sm text-gray-500" aria-live="polite">
             {documents.length} document{documents.length !== 1 ? 's' : ''}
           </div>
         </div>
@@ -123,12 +124,14 @@ export default function DocumentViewer({
             height: 0 // Force flex child to respect parent height
           }}
         >
-          <div className="space-y-1 p-2">
-            {documents.map((doc) => (
+          <nav aria-label="Document navigation" className="space-y-1 p-2">
+            {documents.map((doc, index) => (
               <button
                 key={doc.id}
                 onClick={() => setSelectedDocId(doc.id)}
-                className={`w-full rounded-lg p-2 md:p-3 text-left transition-colors ${
+                aria-label={`View ${doc.name} document, ${doc.status}`}
+                aria-current={selectedDocId === doc.id ? 'page' : undefined}
+                className={`w-full rounded-lg p-2 md:p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-[#007BFF] focus:ring-offset-1 ${
                   selectedDocId === doc.id
                     ? 'bg-blue-50 text-gray-900'
                     : 'text-gray-900 hover:bg-gray-100'
@@ -142,14 +145,15 @@ export default function DocumentViewer({
                         ? 'bg-green-100 text-green-800'
                         : 'bg-yellow-100 text-yellow-800'
                     }`}
+                    aria-label={`Status: ${doc.status}`}
                   >
                     {doc.status}
                   </span>
                 </div>
               </button>
             ))}
-          </div>
-        </div>
+          </nav>
+        </aside>
       </div>
 
       {/* Document Content */}
@@ -165,11 +169,13 @@ export default function DocumentViewer({
                 <div className="flex-1 min-w-0">
                   <h2 className="text-lg md:text-xl font-semibold text-gray-900 truncate">{selectedDoc.name}</h2>
                 </div>
-                <div className="flex flex-wrap gap-2 items-center">
+                <div className="flex flex-wrap gap-2 items-center" role="group" aria-label="Document actions">
                   {selectedDoc.content && (
                     <button
                       onClick={() => copyToClipboard(selectedDoc.content!)}
-                      className={`rounded-lg border px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-medium transition-colors ${
+                      aria-label={copySuccess ? 'Content copied to clipboard' : 'Copy document content to clipboard'}
+                      aria-live="polite"
+                      className={`rounded-lg border px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[#007BFF] focus:ring-offset-1 ${
                         copySuccess
                           ? 'border-green-500 bg-green-50 text-green-700'
                           : 'border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -181,7 +187,8 @@ export default function DocumentViewer({
                   {selectedDoc.file_path && (
                     <button
                       onClick={() => handleDownload(selectedDoc.id)}
-                      className="rounded-lg bg-blue-600 px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-medium text-white hover:bg-blue-700"
+                      aria-label={`Download ${selectedDoc.name} document`}
+                      className="rounded-lg bg-blue-600 px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-[#007BFF] focus:ring-offset-1"
                     >
                       Download
                     </button>
@@ -191,9 +198,10 @@ export default function DocumentViewer({
             </div>
 
             {/* Content - Scrollable */}
-            <div 
+            <article
               ref={contentScrollRef}
               className="flex-1"
+              aria-label={`Content of ${selectedDoc.name}`}
               style={{ 
                 overflowY: 'auto',
                 overflowX: 'hidden',
@@ -209,7 +217,7 @@ export default function DocumentViewer({
                     </ReactMarkdown>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center p-8 md:p-12 text-gray-500">
+                  <div className="flex items-center justify-center p-8 md:p-12 text-gray-500" role="status" aria-live="polite">
                     <div className="text-center">
                       <div className="text-base md:text-lg font-medium">No content available</div>
                       <div className="mt-2 text-xs md:text-sm">
@@ -221,7 +229,7 @@ export default function DocumentViewer({
                   </div>
                 )}
               </div>
-            </div>
+            </article>
           </>
         ) : (
           <div className="flex h-full items-center justify-center text-gray-500">

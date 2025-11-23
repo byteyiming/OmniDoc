@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import Button from './Button';
@@ -26,9 +26,15 @@ export default function Modal({
   showCloseButton = true,
   closeOnBackdropClick = true,
 }: ModalProps) {
-  // Handle ESC key
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
+
+  // Handle ESC key and focus management
   useEffect(() => {
     if (!isOpen) return;
+
+    // Store the previously focused element
+    previousActiveElement.current = document.activeElement as HTMLElement;
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -36,13 +42,50 @@ export default function Modal({
       }
     };
 
+    // Focus trap - handle Tab key
+    const handleTab = (e: KeyboardEvent) => {
+      if (!modalRef.current) return;
+
+      const focusableElements = modalRef.current.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      const firstElement = focusableElements[0] as HTMLElement;
+      const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+      if (e.shiftKey) {
+        // Shift + Tab
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement?.focus();
+        }
+      } else {
+        // Tab
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement?.focus();
+        }
+      }
+    };
+
     document.addEventListener('keydown', handleEscape);
+    document.addEventListener('keydown', handleTab);
     // Prevent body scroll when modal is open
     document.body.style.overflow = 'hidden';
 
+    // Focus the first focusable element in the modal
+    setTimeout(() => {
+      const firstFocusable = modalRef.current?.querySelector(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      ) as HTMLElement;
+      firstFocusable?.focus();
+    }, 0);
+
     return () => {
       document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('keydown', handleTab);
       document.body.style.overflow = 'unset';
+      // Restore focus to the previously focused element
+      previousActiveElement.current?.focus();
     };
   }, [isOpen, onClose]);
 
@@ -73,6 +116,7 @@ export default function Modal({
 
       {/* Modal Content */}
       <div
+        ref={modalRef}
         className={clsx(
           'relative bg-white rounded-[8px] shadow-[0_0.5rem_1rem_rgba(0,0,0,.15)]',
           'w-full',

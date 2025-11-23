@@ -91,17 +91,25 @@ export function PlaceholdersAndVanishInput({
         className
       )}
       onSubmit={handleSubmit}
+      aria-label="Project idea input form"
     >
       <div className="relative w-full">
+        <label htmlFor="userIdeaTextarea" className="sr-only">
+          Enter your project idea
+        </label>
         <textarea
+          id="userIdeaTextarea"
           value={value}
           onChange={onChange}
           disabled={disabled}
           placeholder=""
           maxLength={maxLength}
+          aria-label="Project idea input"
+          aria-describedby="charCount"
+          aria-required="true"
           className={cn(
             'w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 pr-14 text-gray-900',
-            'focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500',
+            'focus:border-[#007BFF] focus:outline-none focus:ring-2 focus:ring-[#007BFF]',
             'disabled:cursor-not-allowed disabled:opacity-50',
             'transition-all duration-200 resize-none',
             'min-h-[120px] max-h-[300px]'
@@ -126,14 +134,15 @@ export function PlaceholdersAndVanishInput({
 
         {/* Send Button - Inside input box, bottom right */}
         <button
-          type="button"
-          onClick={handleSendClick}
+          type="submit"
+          aria-label={isSubmitting ? 'Submitting project idea' : 'Submit project idea'}
           disabled={disabled || !value.trim() || isSubmitting}
+          onClick={handleSendClick}
           className={cn(
             'absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-full z-10',
-            'bg-blue-600 text-white transition-colors',
-            'hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-blue-600',
-            'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
+            'bg-[#007BFF] text-white transition-colors',
+            'hover:bg-[#0056b3] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#007BFF]',
+            'focus:outline-none focus:ring-2 focus:ring-[#007BFF] focus:ring-offset-2'
           )}
           suppressHydrationWarning
         >

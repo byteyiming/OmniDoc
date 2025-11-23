@@ -58,7 +58,11 @@ export default function HowItWorks() {
               
               {/* Icon */}
               <div className="mb-4 flex justify-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-50 text-4xl">
+                <div
+                  className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-50 text-4xl"
+                  role="img"
+                  aria-label={`Step ${step.number} icon`}
+                >
                   {step.icon}
                 </div>
               </div>

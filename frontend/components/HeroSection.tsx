@@ -24,7 +24,12 @@ export default function HeroSection() {
             <div className="flex items-center space-x-4 sm:space-x-8">
               {/* Idea */}
               <div className="flex flex-col items-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 text-4xl shadow-lg transition-all duration-300 hover:scale-110 hover:shadow-xl sm:h-24 sm:w-24 animate-pulse" style={{ animationDuration: '2s' }}>
+                <div
+                  className="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 text-4xl shadow-lg transition-all duration-300 hover:scale-110 hover:shadow-xl sm:h-24 sm:w-24 animate-pulse"
+                  style={{ animationDuration: '2s' }}
+                  role="img"
+                  aria-label="Light bulb icon representing idea"
+                >
                   💡
                 </div>
                 <span className="mt-3 text-sm font-medium text-gray-700 sm:text-base" suppressHydrationWarning>
@@ -70,7 +75,12 @@ export default function HeroSection() {
               
               {/* Customized Agents */}
               <div className="flex flex-col items-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-purple-100 text-4xl shadow-lg transition-all duration-300 hover:scale-110 hover:shadow-xl sm:h-24 sm:w-24 animate-pulse" style={{ animationDuration: '2s', animationDelay: '0.3s' }}>
+                <div
+                  className="flex h-20 w-20 items-center justify-center rounded-full bg-purple-100 text-4xl shadow-lg transition-all duration-300 hover:scale-110 hover:shadow-xl sm:h-24 sm:w-24 animate-pulse"
+                  style={{ animationDuration: '2s', animationDelay: '0.3s' }}
+                  role="img"
+                  aria-label="Robot icon representing AI agents"
+                >
                   🤖
                 </div>
                 <span className="mt-3 text-sm font-medium text-gray-700 sm:text-base" suppressHydrationWarning>
@@ -116,7 +126,12 @@ export default function HeroSection() {
               
               {/* Documents */}
               <div className="flex flex-col items-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100 text-4xl shadow-lg transition-all duration-300 hover:scale-110 hover:shadow-xl sm:h-24 sm:w-24 animate-pulse" style={{ animationDuration: '2s', animationDelay: '0.6s' }}>
+                <div
+                  className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100 text-4xl shadow-lg transition-all duration-300 hover:scale-110 hover:shadow-xl sm:h-24 sm:w-24 animate-pulse"
+                  style={{ animationDuration: '2s', animationDelay: '0.6s' }}
+                  role="img"
+                  aria-label="Books icon representing documents"
+                >
                   📚
                 </div>
                 <span className="mt-3 text-sm font-medium text-gray-700 sm:text-base" suppressHydrationWarning>

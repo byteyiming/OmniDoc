@@ -7,6 +7,7 @@ import "./globals.css";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import SkipLink from "@/components/SkipLink";
 
 // Open Sans - Primary font per UI Style Guide
 const openSans = Open_Sans({
@@ -59,8 +60,11 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ErrorBoundary>
+          <SkipLink />
           <Header />
-          <main className="grow">{children}</main>
+          <main id="main-content" className="grow" tabIndex={-1}>
+            {children}
+          </main>
           <Footer />
         </ErrorBoundary>
         <Analytics />

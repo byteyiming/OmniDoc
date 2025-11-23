@@ -203,14 +203,23 @@ export default function Home() {
             />
             {/* Character Count */}
             <div className="mt-2 flex justify-end">
-              <span className={`text-xs sm:text-sm ${
-                userIdea.length >= 5000 
-                  ? 'text-red-600 font-medium' 
-                  : userIdea.length >= 4500 
+              <span
+                id="charCount"
+                className={`text-xs sm:text-sm ${
+                  userIdea.length >= 5000 
+                    ? 'text-red-600 font-medium' 
+                    : userIdea.length >= 4500 
                     ? 'text-yellow-600' 
                     : 'text-gray-500'
-              }`}>
+                }`}
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <span className="sr-only">Character count: </span>
                 {userIdea.length} / 5000
+                {userIdea.length >= 5000 && (
+                  <span className="sr-only">, maximum length reached</span>
+                )}
               </span>
             </div>
             {error && (

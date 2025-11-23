@@ -30,7 +30,11 @@ export default function EmptyState({
     <div className={`flex flex-col items-center justify-center px-4 py-12 text-center ${className || ''}`}>
       {/* Icon */}
       {icon && (
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#F8F9FA] text-4xl">
+        <div
+          className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#F8F9FA] text-4xl"
+          role="img"
+          aria-hidden="true"
+        >
           {icon}
         </div>
       )}

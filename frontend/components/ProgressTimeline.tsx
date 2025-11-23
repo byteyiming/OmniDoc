@@ -108,15 +108,20 @@ export default function ProgressTimeline({
   //   );
   // }
 
+  const completedCount = events.filter((e) => e.type === 'document_completed').length;
+  const progressPercentage = total ? Math.round((completedCount / total) * 100) : 0;
+
   return (
-    <div className="space-y-4">
+    <section aria-label="Generation progress" className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-900">{t('status.progress')}</h3>
         {total && (
-          <span className="text-sm font-medium text-gray-900">
-            {events.filter((e) => e.type === 'document_completed').length}/
-            {total} {t('status.completed')}
-          </span>
+          <div className="text-sm font-medium text-gray-900" aria-live="polite" aria-atomic="true">
+            <span className="sr-only">Progress: {completedCount} of {total} documents completed, {progressPercentage}%</span>
+            <span aria-hidden="true">
+              {completedCount}/{total} {t('status.completed')}
+            </span>
+          </div>
         )}
       </div>
 
@@ -151,25 +156,38 @@ export default function ProgressTimeline({
                         ? 'bg-green-500' 
                         : getEventColor(event.type)
                     } text-white`}
+                    role="img"
+                    aria-label={`${event.type === 'document_completed' ? 'Completed' : event.type === 'document_started' ? 'In progress' : event.type} status icon`}
                   >
-                    <span className="text-sm">{getEventIcon(event)}</span>
+                    <span className="text-sm" aria-hidden="true">{getEventIcon(event)}</span>
                   </div>
 
                   {/* Content */}
-                  <div className="flex-1 rounded-lg bg-white p-3 shadow-sm">
+                  <div className="flex-1 rounded-lg bg-white p-3 shadow-sm" role="status" aria-live="polite">
                     <div className="flex items-center justify-between">
                       <div className="font-medium text-gray-900">
                         {message}
                       </div>
                       {event.timestamp && (
-                        <div className="text-xs text-gray-500">
+                        <time
+                          dateTime={event.timestamp}
+                          className="text-xs text-gray-500"
+                          aria-label={`Time: ${new Date(event.timestamp).toLocaleTimeString()}`}
+                        >
                           {new Date(event.timestamp).toLocaleTimeString()}
-                        </div>
+                        </time>
                       )}
                     </div>
                     {event.type === 'document_completed' && event.index && event.total && (
                       <div className="mt-2">
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                        <div
+                          className="h-2 w-full overflow-hidden rounded-full bg-gray-200"
+                          role="progressbar"
+                          aria-valuenow={100}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label="Document completed"
+                        >
                           <div
                             className="h-full bg-blue-500 transition-all duration-300"
                             style={{
@@ -181,7 +199,14 @@ export default function ProgressTimeline({
                     )}
                     {event.type !== 'document_completed' && event.index && event.total && (
                       <div className="mt-2">
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                        <div
+                          className="h-2 w-full overflow-hidden rounded-full bg-gray-200"
+                          role="progressbar"
+                          aria-valuenow={parseInt(event.index)}
+                          aria-valuemin={0}
+                          aria-valuemax={parseInt(event.total)}
+                          aria-label={`Progress: ${event.index} of ${event.total}`}
+                        >
                           <div
                             className="h-full bg-blue-500 transition-all duration-300"
                             style={{
@@ -201,7 +226,7 @@ export default function ProgressTimeline({
           )}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
