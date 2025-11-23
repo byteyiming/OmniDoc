@@ -1,34 +1,38 @@
 'use client';
 
 import { useMemo } from 'react';
+import useSWR from 'swr';
 import { DocumentTemplate, getDocumentTemplates } from '../lib/api';
 import { useI18n } from '../lib/i18n';
 import { DOCUMENT_TEMPLATES } from '../lib/documentTemplates';
-import { useEffect, useState } from 'react';
 
 interface TemplateSelectorProps {
   selectedDocuments: string[];
   onSelectionChange: (selected: string[]) => void;
 }
 
+// SWR fetcher for document templates
+const templatesFetcher = async () => {
+  const response = await getDocumentTemplates();
+  return response.documents;
+};
+
 export default function TemplateSelector({
   selectedDocuments,
   onSelectionChange,
 }: TemplateSelectorProps) {
-  const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const { t } = useI18n();
 
-  useEffect(() => {
-    async function loadTemplates() {
-      try {
-        const response = await getDocumentTemplates();
-        setTemplates(response.documents);
-      } catch (err) {
-        console.error('Error loading document templates:', err);
-      }
+  // Use SWR for data fetching with caching
+  const { data: templates = [] } = useSWR<DocumentTemplate[]>(
+    'document-templates',
+    templatesFetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 60000, // Cache for 1 minute
     }
-    loadTemplates();
-  }, []);
+  );
 
   // Detect which template is currently selected based on selectedDocuments
   const currentTemplate = useMemo(() => {

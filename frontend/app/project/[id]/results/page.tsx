@@ -1,42 +1,37 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import DocumentViewer from '@/components/DocumentViewer';
 import { getProjectDocuments, GeneratedDocument } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+
+// SWR fetcher function
+const fetcher = async (projectId: string) => {
+  const response = await getProjectDocuments(projectId);
+  return response.documents;
+};
 
 export default function ProjectResultsPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
   const { t } = useI18n();
-
-  const [documents, setDocuments] = useState<GeneratedDocument[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
 
-  useEffect(() => {
-    async function loadDocuments() {
-      if (!projectId) return;
-
-      try {
-        const response = await getProjectDocuments(projectId);
-        setDocuments(response.documents);
-        setLoading(false);
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Failed to load documents'
-        );
-        setLoading(false);
-      }
+  // Use SWR for data fetching with caching and revalidation
+  const { data: documents = [], error, isLoading: loading } = useSWR<GeneratedDocument[]>(
+    projectId ? `project-${projectId}-documents` : null,
+    () => fetcher(projectId),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 5000, // Dedupe requests within 5 seconds
+      errorRetryCount: 3,
+      errorRetryInterval: 1000,
     }
-
-    loadDocuments();
-  }, [projectId]);
+  );
 
   const handleShare = async () => {
     const url = window.location.href;
