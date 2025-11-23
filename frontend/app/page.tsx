@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { PlaceholdersAndVanishInput } from '@/components/PlaceholdersAndVanishInput';
 import HeroSection from '@/components/HeroSection';
 import HowItWorks from '@/components/HowItWorks';
@@ -10,9 +11,16 @@ import { useI18n } from '@/lib/i18n';
 import { type ViewMode } from '@/lib/documentRanking';
 import { DOCUMENT_TEMPLATES } from '@/lib/documentTemplates';
 
-// Lazy load heavy components for better code splitting
-const TemplateSelector = lazy(() => import('@/components/TemplateSelector'));
-const OptionsSelector = lazy(() => import('@/components/OptionsSelector'));
+// Lazy load heavy components for better code splitting using next/dynamic
+const TemplateSelector = dynamic(() => import('@/components/TemplateSelector'), {
+  ssr: false,
+  loading: () => <div className="h-32 bg-[#F8F9FA] animate-pulse rounded-lg" />,
+});
+
+const OptionsSelector = dynamic(() => import('@/components/OptionsSelector'), {
+  ssr: false,
+  loading: () => <div className="h-48 bg-[#F8F9FA] animate-pulse rounded-lg" />,
+});
 
 export default function Home() {
   const router = useRouter();
@@ -163,26 +171,22 @@ export default function Home() {
         <div className="flex flex-col space-y-4 sm:space-y-6">
           {/* Row 1: Template Selector - Lazy loaded */}
           <div className="w-full">
-            <Suspense fallback={<div className="h-32 bg-gray-100 animate-pulse rounded-lg" />}>
-              <TemplateSelector
-                selectedDocuments={selectedDocuments}
-                onSelectionChange={setSelectedDocuments}
-              />
-            </Suspense>
+            <TemplateSelector
+              selectedDocuments={selectedDocuments}
+              onSelectionChange={setSelectedDocuments}
+            />
           </div>
 
           {/* Row 2: Options Selector (Collapsible, contains Document Selector) - Lazy loaded */}
           <div className="w-full">
-            <Suspense fallback={<div className="h-48 bg-gray-100 animate-pulse rounded-lg" />}>
-              <OptionsSelector
-                selectedDocuments={selectedDocuments}
-                onSelectionChange={setSelectedDocuments}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                organizationMode={organizationMode}
-                onOrganizationModeChange={setOrganizationMode}
-              />
-            </Suspense>
+            <OptionsSelector
+              selectedDocuments={selectedDocuments}
+              onSelectionChange={setSelectedDocuments}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              organizationMode={organizationMode}
+              onOrganizationModeChange={setOrganizationMode}
+            />
           </div>
 
           {/* Row 3: Input Area */}
