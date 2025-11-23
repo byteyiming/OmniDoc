@@ -668,6 +668,24 @@ class ContextManager:
             finally:
                 self._put_connection(conn)
     
+    def get_document_content_by_type(self, project_id: str, document_type: str) -> Optional[str]:
+        """Get document content by raw document type string (latest version)"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT content FROM agent_outputs 
+                WHERE project_id = %s AND document_type = %s
+                ORDER BY version DESC LIMIT 1
+            """, (project_id, document_type))
+            row = cursor.fetchone()
+            cursor.close()
+            if row:
+                return row["content"]
+            return None
+        finally:
+            self._put_connection(conn)
+
     def get_all_agent_outputs(self, project_id: str) -> Dict[AgentType, AgentOutput]:
         """Get all agent outputs for a project"""
         conn = self._get_connection()
@@ -1412,29 +1430,14 @@ class ContextManager:
             # Content is stored in database, not in files
             # If content is not in the entry, try to get it from agent_outputs table
             if include_content and not item.get("content"):
-                try:
-                    conn = self._get_connection()
-                    cursor = conn.cursor(cursor_factory=RealDictCursor)
-                    cursor.execute("""
-                        SELECT content FROM agent_outputs 
-                        WHERE project_id = %s AND document_type = %s
-                        ORDER BY version DESC LIMIT 1
-                    """, (project_id, doc_id))
-                    row = cursor.fetchone()
-                    cursor.close()
-                    if row:
-                        item["content"] = row["content"]
-                    else:
-                        item["content"] = None
-                except Exception:
-                    item["content"] = None
+                item["content"] = self.get_document_content_by_type(project_id, doc_id)
             documents_map[doc_id] = item
 
         return documents_map
 
     def close(self):
         """Close database connection"""
-        if self.connection and not self.connection.closed:
+        if hasattr(self, 'connection') and self.connection and not self.connection.closed:
             self.connection.close()
     
     def __enter__(self):

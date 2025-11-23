@@ -1,10 +1,16 @@
-"""WebSocket connection manager"""
+"""WebSocket connection manager with Redis Pub/Sub support"""
 from __future__ import annotations
 
+import asyncio
+import json
+import os
+import ssl
 from datetime import datetime
-from typing import Any, Dict, Set
+from typing import Any, Dict, List, Set, Optional
+from urllib.parse import urlparse
 
 from fastapi import WebSocket
+import redis.asyncio as redis
 
 from src.utils.logger import get_logger
 
@@ -13,301 +19,215 @@ logger = get_logger(__name__)
 
 class WebSocketManager:
     """
-    Manage WebSocket connections per project.
+    Manage WebSocket connections per project with Redis Pub/Sub support.
     
     This class maintains a registry of active WebSocket connections grouped
     by project ID, allowing broadcast of progress updates to all connected
-    clients for a specific project.
+    clients for a specific project across multiple server instances.
     
     Features:
+    - Redis Pub/Sub for cross-process messaging
     - Per-project connection tracking
     - Automatic cleanup of disconnected clients
-    - Thread-safe connection management
-    - Timestamped message broadcasting
-    - Message queue for disconnected clients (reconnect support)
-    - Connection limit per project
-    - Heartbeat/ping support
+    - Message queue for disconnected clients
     """
     
     def __init__(self, max_connections_per_project: int = 5, max_queue_size: int = 100, 
                  heartbeat_interval: int = 30, heartbeat_timeout: int = 60) -> None:
-        """
-        Initialize the WebSocket manager with empty connection registry.
-        
-        Args:
-            max_connections_per_project: Maximum number of connections per project
-            max_queue_size: Maximum number of messages to queue per project
-            heartbeat_interval: Interval in seconds between heartbeat messages (default: 30)
-            heartbeat_timeout: Timeout in seconds before considering connection dead (default: 60)
-        """
         self.active_connections: Dict[str, Set[WebSocket]] = {}
-        self.message_queue: Dict[str, List[Dict[str, Any]]] = {}  # Cache messages for disconnected clients
-        self.connection_last_pong: Dict[WebSocket, float] = {}  # Track last pong time for each connection
+        self.message_queue: Dict[str, List[Dict[str, Any]]] = {}
+        self.connection_last_pong: Dict[WebSocket, float] = {}
         self.max_connections_per_project = max_connections_per_project
         self.max_queue_size = max_queue_size
         self.heartbeat_interval = heartbeat_interval
         self.heartbeat_timeout = heartbeat_timeout
-    
-    async def connect(self, websocket: WebSocket, project_id: str) -> None:
-        """
-        Connect a WebSocket to a project.
         
-        Accepts the WebSocket connection and adds it to the registry for
-        the specified project. Checks connection limits and sends queued messages.
+        self.redis_client: Optional[redis.Redis] = None
+        self.pubsub = None
+        self.redis_task = None
+
+    async def connect_redis(self) -> None:
+        """Initialize Redis connection and start listener"""
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
         
-        Args:
-            websocket: WebSocket connection to accept
-            project_id: Project identifier to associate with this connection
+        try:
+            # SSL configuration for Upstash
+            ssl_context = None
+            if "upstash.io" in redis_url or redis_url.startswith("rediss://"):
+                if redis_url.startswith("redis://"):
+                    redis_url = redis_url.replace("redis://", "rediss://", 1)
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+
+            self.redis_client = redis.from_url(
+                redis_url,
+                decode_responses=True,
+                ssl_cert_reqs=ssl.CERT_NONE if ssl_context else None
+            )
             
-        Raises:
-            ValueError: If connection limit is exceeded
-        """
-        # Check connection limit
+            # Test connection
+            await self.redis_client.ping()
+            logger.info("✅ WebSocket Manager connected to Redis")
+            
+            # Start listener
+            self.pubsub = self.redis_client.pubsub()
+            await self.pubsub.psubscribe("projects:*:events")
+            self.redis_task = asyncio.create_task(self._redis_listener())
+            
+        except Exception as e:
+            logger.warning(f"⚠️ WebSocket Manager failed to connect to Redis: {e}. Falling back to local-only mode.")
+            self.redis_client = None
+
+    async def _redis_listener(self):
+        """Listen for messages from Redis and broadcast locally"""
+        try:
+            async for message in self.pubsub.listen():
+                if message["type"] == "pmessage":
+                    try:
+                        channel = message["channel"]
+                        # Channel format: projects:{project_id}:events
+                        project_id = channel.split(":")[1]
+                        payload = json.loads(message["data"])
+                        
+                        # Broadcast to local connections for this project
+                        await self._broadcast_local(project_id, payload)
+                    except Exception as e:
+                        logger.error(f"Error processing Redis message: {e}")
+        except Exception as e:
+            logger.error(f"Redis listener error: {e}")
+
+    async def shutdown(self):
+        """Cleanup resources"""
+        if self.pubsub:
+            await self.pubsub.unsubscribe()
+        if self.redis_task:
+            self.redis_task.cancel()
+        if self.redis_client:
+            await self.redis_client.close()
+
+    async def connect(self, websocket: WebSocket, project_id: str) -> None:
+        """Connect a WebSocket to a project."""
         connections = self.active_connections.get(project_id, set())
         if len(connections) >= self.max_connections_per_project:
-            logger.warning(
-                "Connection limit exceeded for project %s (%d/%d). Rejecting new connection.",
-                project_id,
-                len(connections),
-                self.max_connections_per_project
-            )
             await websocket.close(code=1008, reason="Too many connections")
             return
         
         await websocket.accept()
         self.active_connections.setdefault(project_id, set()).add(websocket)
         
-        # Initialize heartbeat tracking for this connection
         import time
         self.connection_last_pong[websocket] = time.time()
         
-        # Send queued messages if any
+        # Send queued messages
         if project_id in self.message_queue and self.message_queue[project_id]:
-            queued_messages = self.message_queue[project_id]
-            logger.info(
-                "Sending %d queued messages to reconnected client for project %s",
-                len(queued_messages),
-                project_id
-            )
-            
-            # Send all queued messages
-            for msg in queued_messages:
-                try:
-                    await websocket.send_json(msg)
-                except Exception as exc:
-                    logger.warning("Failed to send queued message to reconnected client: %s", exc)
-                    break  # Stop sending if connection fails
-            
-            # Clear queue after sending
+            queued = self.message_queue[project_id]
+            for msg in queued:
+                await websocket.send_json(msg)
             del self.message_queue[project_id]
 
     def disconnect(self, websocket: WebSocket, project_id: str) -> None:
-        """
-        Disconnect a WebSocket from a project.
-        
-        Removes the connection from the registry. If no connections remain
-        for the project, the project entry is removed.
-        
-        Args:
-            websocket: WebSocket connection to remove
-            project_id: Project identifier
-        """
+        """Disconnect a WebSocket."""
         connections = self.active_connections.get(project_id)
-        if not connections:
-            return
-        connections.discard(websocket)
-        if not connections:
-            self.active_connections.pop(project_id, None)
-        
-        # Clean up heartbeat tracking
+        if connections:
+            connections.discard(websocket)
+            if not connections:
+                self.active_connections.pop(project_id, None)
         self.connection_last_pong.pop(websocket, None)
 
     async def send_progress(self, project_id: str, message: Dict[str, Any]) -> None:
         """
-        Send progress update to all connected clients for a project.
-        
-        Broadcasts a message to all active WebSocket connections for the given
-        project. Automatically removes disconnected clients from the registry.
-        If no connections exist, messages are queued for later delivery.
-        
-        Args:
-            project_id: Project identifier
-            message: Message dictionary to send (will have timestamp added)
-        
-        Note:
-            If no connections exist for the project, messages are queued.
-            Failed sends are logged but don't raise exceptions.
+        Send progress update.
+        If Redis is available, publish to Redis (which will trigger _broadcast_local via listener).
+        If not, broadcast locally directly.
         """
         payload = {**message, "timestamp": datetime.now().isoformat()}
+        
+        if self.redis_client:
+            try:
+                await self.redis_client.publish(
+                    f"projects:{project_id}:events",
+                    json.dumps(payload)
+                )
+                return
+            except Exception as e:
+                logger.error(f"Failed to publish to Redis: {e}")
+        
+        # Fallback to local broadcast if Redis failed or not configured
+        await self._broadcast_local(project_id, payload)
+
+    async def _broadcast_local(self, project_id: str, payload: Dict[str, Any]) -> None:
+        """Send to locally connected clients"""
         connections = self.active_connections.get(project_id)
         
         if not connections:
-            # No active connections - queue the message
+            # Queue message if no active connections (local only)
+            # Note: With Redis, we might rely on persistence there, but for now simple queuing
             if project_id not in self.message_queue:
                 self.message_queue[project_id] = []
             
             queue = self.message_queue[project_id]
-            
-            # Limit queue size to prevent memory issues
             if len(queue) >= self.max_queue_size:
-                # Remove oldest messages (FIFO)
                 queue.pop(0)
-                logger.warning(
-                    "Message queue for project %s reached max size (%d). Dropping oldest message.",
-                    project_id,
-                    self.max_queue_size
-                )
-            
             queue.append(payload)
-            logger.debug(
-                "Queued message for project %s (no active connections). Queue size: %d",
-                project_id,
-                len(queue)
-            )
             return
-        
-        # Send to all active connections
-        disconnected: Set[WebSocket] = set()
 
+        disconnected = set()
         for connection in connections:
             try:
                 await connection.send_json(payload)
-            except Exception as exc:
-                logger.warning("Failed to send WebSocket message: %s", exc)
+            except Exception:
                 disconnected.add(connection)
         
-        # Clean up disconnected clients
         for connection in disconnected:
             self.disconnect(connection, project_id)
-    
+
+    # ... keep existing helper methods like get_queue_size, etc. ...
     def get_queue_size(self, project_id: str) -> int:
-        """
-        Get the number of queued messages for a project.
-        
-        Args:
-            project_id: Project identifier
-            
-        Returns:
-            Number of queued messages
-        """
         return len(self.message_queue.get(project_id, []))
     
     def clear_queue(self, project_id: str) -> None:
-        """
-        Clear queued messages for a project.
-        
-        Args:
-            project_id: Project identifier
-        """
         if project_id in self.message_queue:
             del self.message_queue[project_id]
-            logger.debug("Cleared message queue for project %s", project_id)
-    
+
     def get_connection_count(self, project_id: str) -> int:
-        """
-        Get the number of active connections for a project.
-        
-        Args:
-            project_id: Project identifier
-            
-        Returns:
-            Number of active connections
-        """
         return len(self.active_connections.get(project_id, set()))
-    
+
     async def send_ping(self, websocket: WebSocket) -> bool:
-        """
-        Send a ping message to check if connection is alive.
-        
-        Args:
-            websocket: WebSocket connection to ping
-            
-        Returns:
-            True if ping was sent successfully, False otherwise
-        """
         try:
             await websocket.send_json({
                 "type": "ping",
                 "timestamp": datetime.now().isoformat()
             })
             return True
-        except Exception as exc:
-            logger.debug("Failed to send ping: %s", exc)
+        except Exception:
             return False
-    
+
     def record_pong(self, websocket: WebSocket) -> None:
-        """
-        Record a pong response from a connection.
-        
-        Args:
-            websocket: WebSocket connection that sent pong
-        """
         import time
         self.connection_last_pong[websocket] = time.time()
-    
+
     async def check_connection_health(self, websocket: WebSocket, project_id: str) -> bool:
-        """
-        Check if a connection is healthy by verifying last pong time.
-        
-        Args:
-            websocket: WebSocket connection to check
-            project_id: Project identifier
-            
-        Returns:
-            True if connection is healthy, False if it should be disconnected
-        """
         import time
         current_time = time.time()
         last_pong = self.connection_last_pong.get(websocket, current_time)
-        
-        # If no pong received within timeout, connection is dead
         if current_time - last_pong > self.heartbeat_timeout:
-            logger.warning(
-                "Connection health check failed for project %s: no pong received in %d seconds",
-                project_id,
-                int(current_time - last_pong)
-            )
             return False
-        
         return True
-    
+
     async def cleanup_dead_connections(self, project_id: str) -> int:
-        """
-        Clean up dead connections for a project.
-        
-        Args:
-            project_id: Project identifier
-            
-        Returns:
-            Number of connections cleaned up
-        """
         connections = self.active_connections.get(project_id, set())
-        if not connections:
-            return 0
-        
-        dead_connections = []
-        for websocket in list(connections):
-            if not await self.check_connection_health(websocket, project_id):
-                dead_connections.append(websocket)
-        
-        # Disconnect dead connections
-        for websocket in dead_connections:
+        dead = []
+        for ws in list(connections):
+            if not await self.check_connection_health(ws, project_id):
+                dead.append(ws)
+        for ws in dead:
             try:
-                await websocket.close(code=1001, reason="Connection health check failed")
-            except Exception:
+                await ws.close(code=1001)
+            except:
                 pass
-            self.disconnect(websocket, project_id)
-        
-        if dead_connections:
-            logger.info(
-                "Cleaned up %d dead connections for project %s",
-                len(dead_connections),
-                project_id
-            )
-        
-        return len(dead_connections)
+            self.disconnect(ws, project_id)
+        return len(dead)
 
-
-# Global WebSocket manager instance
+# Global instance
 websocket_manager = WebSocketManager()
-

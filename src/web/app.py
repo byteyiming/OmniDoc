@@ -187,6 +187,10 @@ async def lifespan(app: FastAPI):
     set_projects_limiter(limiter)
     set_documents_limiter(limiter)
     
+    # Initialize WebSocket Redis connection
+    from src.web.websocket_manager import websocket_manager
+    await websocket_manager.connect_redis()
+    
     # Load document catalog on startup
     load_document_definitions()
     
@@ -194,6 +198,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # Cleanup on shutdown
+    await websocket_manager.shutdown()
     logger.info("OmniDoc API shutting down")
 
 

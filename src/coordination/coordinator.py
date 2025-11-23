@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Union, Set
 import re
 import asyncio
 import time
+import sys
 
 from src.agents.generic_document_agent import GenericDocumentAgent
 from src.agents.special_agent_adapter import SpecialAgentAdapter
@@ -17,6 +18,7 @@ from src.config.document_catalog import (
     DocumentDefinition,
     load_document_definitions,
     resolve_dependencies,
+    get_all_dependencies,
 )
 from src.config.settings import get_settings
 from src.context.context_manager import ContextManager
@@ -334,296 +336,97 @@ Issues Identified:
                 sections.append(match.group(1).strip())
         return sections
 
-    async def async_generate_all_docs(
+    async def _generate_single_doc(
         self,
-        user_idea: str,
+        document_id: str,
         project_id: str,
-        selected_documents: List[str],
-        codebase_path: Optional[str] = None,  # Reserved for future use
-        progress_callback: Optional[ProgressCallback] = None,
-    ) -> Dict[str, Dict]:
-        del codebase_path  # Currently unused; keep signature for future enhancements
+        user_idea: str,
+        generated_docs: Dict[str, Dict[str, str]],
+        progress_callback: Optional[ProgressCallback],
+        total: int,
+        completed_count: int
+    ) -> Dict:
+        """
+        Generate a single document. Helper for parallel execution.
+        """
+        definition = self.definitions.get(document_id)
+        if not definition:
+            logger.error("Unknown document id '%s' [Project: %s]", document_id, project_id)
+            raise ValueError(f"Unknown document id '{document_id}'.")
 
-        if not selected_documents:
-            raise ValueError("No documents selected for generation.")
+        agent = self.agents.get(document_id)
+        if not agent:
+            logger.error("No agent available for document '%s' [Project: %s]", document_id, project_id)
+            raise ValueError(f"No agent available for document '{document_id}'.")
 
-        try:
-            execution_plan = resolve_dependencies(selected_documents)
-        except ValueError as exc:
-            logger.info("Dependency resolution issue: %s", exc)
-            raise
+        # Build dependency payload
+        all_dependencies = get_all_dependencies(document_id)
         
-        total = len(execution_plan)
-        completed: List[str] = []
-        generated_docs: Dict[str, Dict[str, str]] = {}
-        results: Dict[str, Dict] = {"files": {}, "documents": []}
-
-        workflow_start_time = time.time()
-        logger.info(
-            "🚀 Starting document generation workflow [Project: %s] [Total documents: %d] [Execution plan: %s] [User idea length: %d chars]",
-            project_id,
-            total,
-            ", ".join(execution_plan),
-            len(user_idea)
-        )
+        # Check for missing dependencies
+        missing_dependencies = [
+            dep for dep in all_dependencies
+            if dep not in generated_docs
+        ]
         
-        # Log user idea preview
-        user_idea_preview = user_idea[:200] + "..." if len(user_idea) > 200 else user_idea
-        logger.info(
-            "💡 User idea preview [Project: %s]: %s",
-            project_id,
-            user_idea_preview
-        )
+        if missing_dependencies:
+            logger.warning(
+                "⚠️ Missing dependencies for document %s: %s [Project: %s]. Continuing.",
+                document_id, missing_dependencies, project_id
+            )
+            if progress_callback:
+                await progress_callback({
+                    "type": "warning",
+                    "project_id": project_id,
+                    "document_id": document_id,
+                    "name": definition.name,
+                    "message": f"Missing dependencies: {', '.join(missing_dependencies)}.",
+                    "missing_dependencies": missing_dependencies,
+                })
+
+        dependency_payload = {
+            dep: generated_docs[dep] for dep in all_dependencies if dep in generated_docs
+        }
+        
+        # Add implicit context for certain documents
+        if not dependency_payload and document_id in ["gtm_strategy", "marketing_plan"]:
+            for useful_doc_id in ["project_charter", "business_model", "requirements"]:
+                if useful_doc_id in generated_docs:
+                    dependency_payload[useful_doc_id] = generated_docs[useful_doc_id]
 
         if progress_callback:
-            await progress_callback(
-                {
-                    "type": "plan",
-            "project_id": project_id,
-                    "documents": ",".join(execution_plan),
-                    "total": str(total),
-                }
+            await progress_callback({
+                "type": "document_started",
+                "project_id": project_id,
+                "document_id": document_id,
+                "name": definition.name,
+                "index": str(completed_count + 1), # Approximate index
+                "total": str(total),
+            })
+
+        output_rel_path = f"{project_id}/{document_id}.md"
+        
+        if isinstance(agent, SpecialAgentAdapter):
+            agent.project_id = project_id
+            agent.context_manager = self.context_manager
+        
+        doc_start_time = time.time()
+        try:
+            logger.info(f"📝 Starting generation for {document_id} [Project: {project_id}]")
+            document_timeout = 1800
+            
+            document_result = await asyncio.wait_for(
+                agent.generate_and_save(
+                    user_idea=user_idea,
+                    dependency_documents=dependency_payload,
+                    output_rel_path=output_rel_path,
+                    project_id=project_id,
+                ),
+                timeout=document_timeout
             )
-
-        for index, document_id in enumerate(execution_plan, start=1):
-            logger.info(
-                "📄 Generating document %d/%d: %s [Project: %s]",
-                index,
-                total,
-                document_id,
-                project_id
-            )
-            # Also print to stderr for Railway visibility
-            import sys
-            print(f"[DOCUMENT GENERATION] Starting {document_id} ({index}/{total}) for project {project_id}", file=sys.stderr, flush=True)
             
-            definition = self.definitions.get(document_id)
-            if not definition:
-                logger.error("Unknown document id '%s' in execution plan [Project: %s]", document_id, project_id)
-                raise ValueError(f"Unknown document id '{document_id}' in execution plan.")
-
-            agent = self.agents.get(document_id)
-            if not agent:
-                logger.error("No agent available for document '%s' [Project: %s]", document_id, project_id)
-                raise ValueError(f"No agent available for document '{document_id}'.")
-
-            # Build dependency payload from all dependencies (document_definitions.json + quality_rules.json)
-            from src.config.document_catalog import get_all_dependencies
-            
-            all_dependencies = get_all_dependencies(document_id)
-            
-            # Check for missing dependencies and handle failures
-            missing_dependencies = [
-                dep for dep in all_dependencies
-                if dep not in generated_docs
-            ]
-            
-            if missing_dependencies:
-                logger.warning(
-                    "⚠️ Missing dependencies for document %s: %s [Project: %s] [Available: %s]",
-                    document_id,
-                    missing_dependencies,
-                    project_id,
-                    list(generated_docs.keys())
-                )
-                
-                # Send WebSocket notification about missing dependencies
-                if progress_callback:
-                    await progress_callback(
-                        {
-                            "type": "warning",
-                            "project_id": project_id,
-                            "document_id": document_id,
-                            "name": definition.name,
-                            "message": f"Missing dependencies: {', '.join(missing_dependencies)}. Continuing with available dependencies.",
-                            "missing_dependencies": missing_dependencies,
-                        }
-                    )
-                
-                # Decision: Continue with available dependencies
-                # This allows documents to be generated even if some dependencies failed
-                # The quality may be affected, but the workflow continues
-            
-            dependency_payload = {
-                dependency: generated_docs[dependency]
-                for dependency in all_dependencies
-                if dependency in generated_docs
-            }
-            
-            # For documents that need context but have no explicit dependencies,
-            # include commonly useful documents (project_charter, business_model, requirements)
-            # This helps documents like GTM strategy that need context but don't have dependencies defined
-            if not dependency_payload and document_id in ["gtm_strategy", "marketing_plan"]:
-                # Include project_charter and business_model if available
-                for useful_doc_id in ["project_charter", "business_model", "requirements"]:
-                    if useful_doc_id in generated_docs:
-                        dependency_payload[useful_doc_id] = generated_docs[useful_doc_id]
-                        logger.debug(
-                            "Including %s as context for %s (no explicit dependencies) [Project: %s]",
-                            useful_doc_id,
-                            document_id,
-                            project_id
-                        )
-            
-            logger.debug(
-                "Document %s dependencies: %s (from definitions: %s, from quality_rules: %s) [Available: %s] [Missing: %s] [Project: %s]",
-                document_id,
-                all_dependencies,
-                definition.dependencies,
-                [d for d in all_dependencies if d not in definition.dependencies],
-                list(dependency_payload.keys()),
-                missing_dependencies,
-                project_id
-            )
-
-            if progress_callback:
-                await progress_callback(
-                    {
-                        "type": "document_started",
-            "project_id": project_id,
-                        "document_id": document_id,
-                        "name": definition.name,
-                        "index": str(index),
-                        "total": str(total),
-                    }
-                )
-
-            output_rel_path = f"{project_id}/{document_id}.md"
-            
-            # Update adapter's project_id if it's a SpecialAgentAdapter
-            if isinstance(agent, SpecialAgentAdapter):
-                agent.project_id = project_id
-                agent.context_manager = self.context_manager
-            
-            doc_start_time = time.time()
-            try:
-                # Log detailed generation start information
-                logger.info(
-                    "📝 Starting generation for document: %s [Project: %s] [Dependencies: %s] [Agent: %s]",
-                    document_id,
-                    project_id,
-                    list(dependency_payload.keys()),
-                    type(agent).__name__
-                )
-                
-                logger.info(f"🟣 Coordinator: About to call agent.generate_and_save for {document_id} (agent: {type(agent).__name__})")
-                
-                # Set document generation timeout (30 minutes per document)
-                document_timeout = 1800  # 30 minutes in seconds
-                try:
-                    document_result = await asyncio.wait_for(
-                        agent.generate_and_save(
-                            user_idea=user_idea,
-                            dependency_documents=dependency_payload,
-                            output_rel_path=output_rel_path,
-                            project_id=project_id,
-                        ),
-                        timeout=document_timeout
-                    )
-                    doc_elapsed = time.time() - doc_start_time
-                    logger.info(f"🟣 Coordinator: agent.generate_and_save completed for {document_id} in {doc_elapsed:.2f}s")
-                except asyncio.TimeoutError:
-                    doc_elapsed = time.time() - doc_start_time
-                    error_msg = f"Document generation timeout after {doc_elapsed:.2f}s (limit: {document_timeout}s)"
-                    logger.error(f"🟣 Coordinator: agent.generate_and_save TIMEOUT for {document_id}: {error_msg}")
-                    
-                    # Send WebSocket error notification
-                    if progress_callback:
-                        await progress_callback(
-                            {
-                                "type": "error",
-                                "project_id": project_id,
-                                "document_id": document_id,
-                                "name": definition.name,
-                                "error": error_msg,
-                            }
-                        )
-                    
-                    # Decide: Skip this document and continue with others
-                    logger.warning(
-                        "⏭️ Skipping document %s due to timeout, continuing with remaining documents [Project: %s]",
-                        document_id,
-                        project_id
-                    )
-                    continue  # Skip to next document
-                except Exception as e:
-                    doc_elapsed = time.time() - doc_start_time
-                    logger.error(f"🟣 Coordinator: agent.generate_and_save FAILED for {document_id} after {doc_elapsed:.2f}s: {type(e).__name__}: {str(e)}", exc_info=True)
-                    
-                    # Send WebSocket error notification
-                    if progress_callback:
-                        await progress_callback(
-                            {
-                                "type": "error",
-                                "project_id": project_id,
-                                "document_id": document_id,
-                                "name": definition.name,
-                                "error": f"{type(e).__name__}: {str(e)}",
-                            }
-                        )
-                    
-                    # Decide: For critical documents, we might want to fail the entire project
-                    # For now, we'll skip and continue (can be made configurable)
-                    is_critical = definition.priority == "high" or document_id in ["requirements", "project_charter"]
-                    if is_critical:
-                        logger.error(
-                            "❌ Critical document %s failed, aborting project [Project: %s]",
-                            document_id,
-                            project_id
-                        )
-                        raise  # Fail the entire project for critical documents
-                    else:
-                        logger.warning(
-                            "⏭️ Skipping document %s due to error, continuing with remaining documents [Project: %s]",
-                            document_id,
-                            project_id
-                        )
-                        continue  # Skip to next document
-                doc_duration = time.time() - doc_start_time
-                content = document_result.get("content", "")
-                content_length = len(content)
-                quality_score = document_result.get("quality_score")
-                file_path = document_result.get("file_path", "")
-                
-                # Log comprehensive generation results
-                logger.info(
-                    "✅ Document %s generated successfully [Project: %s] [Duration: %.2fs] [Size: %d chars] [Quality: %s] [Path: %s]",
-                    document_id,
-                    project_id,
-                    doc_duration,
-                    content_length,
-                    f"{quality_score:.1f}/10" if quality_score else "N/A",
-                    file_path
-                )
-                
-                # Log document statistics (simplified)
-                word_count = len(content.split()) if content else 0
-                logger.debug(
-                    "Document %s: %d words, %d chars [Project: %s]",
-                    document_id,
-                    word_count,
-                    content_length,
-                    project_id
-                )
-                
-                # Also print to stderr for Railway visibility
-                print(f"[DOCUMENT GENERATION] ✅ Completed {document_id} ({index}/{total}) in {doc_duration:.2f}s ({content_length} chars) for project {project_id}", file=sys.stderr, flush=True)
-            except Exception as e:
-                doc_duration = time.time() - doc_start_time
-                logger.error(
-                    "Failed to generate document %s after %.2fs [Project: %s] [Error: %s]",
-                    document_id,
-                    doc_duration,
-                    project_id,
-                    str(e),
-                    exc_info=True
-                )
-                raise
-
-            # Quality review and improvement workflow
+            # Quality Review
             original_content = document_result.get("content", "")
             if original_content:
-                review_start_time = time.time()
                 improved_content = await self._review_and_improve_document(
                     document_id=document_id,
                     document_name=definition.name,
@@ -636,150 +439,209 @@ Issues Identified:
                     project_id=project_id,
                     progress_callback=progress_callback,
                 )
-                review_duration = time.time() - review_start_time
-                if improved_content and improved_content != original_content:
-                    logger.info(
-                        "✅ Document %s improved [Original: %d chars → Improved: %d chars] [Duration: %.2fs] [Project: %s]",
-                        document_id,
-                        len(original_content),
-                        len(improved_content),
-                        review_duration,
-                        project_id
-                    )
-                else:
-                    logger.debug(
-                        "Document %s passed quality review without changes [Duration: %.2fs] [Project: %s]",
-                        document_id,
-                        review_duration,
-                        project_id
-                    )
-                
-                # Update document result with improved content
                 if improved_content and improved_content != original_content:
                     document_result["content"] = improved_content
-                    # Update content in database (not in file)
-                    # Save improved content to database
+                    # Update DB
                     try:
                         from src.context.shared_context import AgentType, DocumentStatus, AgentOutput
-                        # Try to determine agent_type from document_id
-                        agent_type = None
                         try:
                             agent_type = AgentType(document_id)
                         except ValueError:
-                            # Not a standard AgentType - use fallback
-                            logger.debug(f"Document {document_id} not in AgentType enum, using TECHNICAL_DOCUMENTATION fallback")
                             try:
-                                agent_type = AgentType.TECHNICAL_DOCUMENTATION  # Generic fallback
+                                agent_type = AgentType.TECHNICAL_DOCUMENTATION
                             except:
-                                agent_type = list(AgentType)[0]  # Last resort
+                                agent_type = list(AgentType)[0]
                         
-                        # Always save to database - document_type identifies the actual document
                         output = AgentOutput(
                             agent_type=agent_type,
-                            document_type=document_id,  # This is the key identifier
+                            document_type=document_id,
                             content=improved_content,
-                            file_path=document_result.get("file_path"),  # Virtual path
+                            file_path=document_result.get("file_path"),
                             status=DocumentStatus.COMPLETE,
                             quality_score=document_result.get("quality_score"),
                         )
                         self.context_manager.save_agent_output(project_id, output)
-                        logger.info(f"✅ Document {document_id} improved and updated in database [agent_type: {agent_type.value}, document_type: {document_id}]")
                     except Exception as e:
-                        logger.error(f"❌ Could not update improved document {document_id} in database: {e}", exc_info=True)
-
-            generated_docs[document_id] = document_result
-            completed.append(document_id)
-
-            # Store document info as dictionary (not just file_path string) for statistics
-            results["files"][document_id] = {
-                "content": document_result.get("content", ""),
-                "path": document_result.get("file_path", ""),
-                "file_path": document_result.get("file_path", ""),
-            }
-            results["documents"].append(
-                {
-                    "id": document_id,
-                    "name": definition.name,
-                    "category": definition.category,
-                    "file_path": document_result["file_path"],
-                    "generated_at": document_result["generated_at"],
-                    "dependencies": definition.dependencies,
-                }
-            )
-
-            logger.info(
-                "Document %s saved and status updated [Progress: %d/%d] [Project: %s]",
-                document_id,
-                len(completed),
-                total,
-                project_id
-            )
-
-            self.context_manager.update_project_status(
-                project_id=project_id,
-                status="in_progress",
-                user_idea=user_idea,  # Include user_idea in case status doesn't exist yet
-                completed_agents=completed,
-                results=results,
-                selected_documents=selected_documents,
-            )
+                        logger.error(f"Failed to save improved content for {document_id}: {e}")
 
             if progress_callback:
-                await progress_callback(
-                    {
-                        "type": "document_completed",
-                        "project_id": project_id,
-                        "document_id": document_id,
-                        "name": definition.name,
-                        "index": str(index),
-                        "total": str(total),
-                    }
-                )
+                await progress_callback({
+                    "type": "document_completed",
+                    "project_id": project_id,
+                    "document_id": document_id,
+                    "name": definition.name,
+                    "index": str(completed_count + 1),
+                    "total": str(total),
+                })
+                
+            return document_id, document_result
 
+        except Exception as e:
+            logger.error(f"Failed to generate {document_id}: {e}", exc_info=True)
+            if progress_callback:
+                await progress_callback({
+                    "type": "error",
+                    "project_id": project_id,
+                    "document_id": document_id,
+                    "name": definition.name,
+                    "error": str(e),
+                })
+            raise
+
+    async def async_generate_all_docs(
+        self,
+        user_idea: str,
+        project_id: str,
+        selected_documents: List[str],
+        codebase_path: Optional[str] = None,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> Dict[str, Dict]:
+        del codebase_path
+
+        if not selected_documents:
+            raise ValueError("No documents selected for generation.")
+
+        try:
+            # Get topological sort to ensure order is respected in fallback, but we use DAG for parallel
+            execution_plan = resolve_dependencies(selected_documents)
+        except ValueError as exc:
+            logger.info("Dependency resolution issue: %s", exc)
+            raise
+        
+        total = len(execution_plan)
+        generated_docs: Dict[str, Dict[str, str]] = {}
+        results: Dict[str, Dict] = {"files": {}, "documents": []}
+        
+        completed_docs: Set[str] = set()
+        # Note: execution_plan includes selected docs AND their dependencies.
+        # We need to process ALL of them.
+        pending_docs = set(execution_plan)
+        
+        workflow_start_time = time.time()
+        logger.info(f"🚀 Starting PARALLEL workflow [Project: {project_id}] [Total: {total}]")
+
+        if progress_callback:
+            await progress_callback({
+                "type": "plan",
+                "project_id": project_id,
+                "documents": ",".join(execution_plan),
+                "total": str(total),
+            })
+
+        # Loop until all documents are processed
+        while pending_docs:
+            # Find documents whose dependencies are all met
+            ready_batch = []
+            for doc_id in pending_docs:
+                deps = get_all_dependencies(doc_id)
+                # Check if all dependencies are in completed_docs
+                # Note: Deps must be in 'generated_docs' which implies they finished successfully.
+                if all(dep in completed_docs for dep in deps if dep in execution_plan):
+                    # Also verify deps that are NOT in execution plan (e.g. pre-existing)? 
+                    # resolve_dependencies ensures all needed deps are in the plan.
+                    ready_batch.append(doc_id)
+            
+            if not ready_batch:
+                # This shouldn't happen if resolve_dependencies passed, unless there's a logic bug
+                # or a cycle passed through (unlikely).
+                logger.error("Deadlock detected in generation: pending docs have unmet dependencies but no progress can be made.")
+                logger.error(f"Pending: {pending_docs}")
+                logger.error(f"Completed: {completed_docs}")
+                break
+
+            # Sort batch to be deterministic (e.g. by index in execution_plan) to reduce chaos
+            ready_batch.sort(key=lambda x: execution_plan.index(x))
+            
+            logger.info(f"⚡ Processing parallel batch: {ready_batch}")
+            
+            # Execute batch in parallel
+            tasks = []
+            for doc_id in ready_batch:
+                tasks.append(self._generate_single_doc(
+                    document_id=doc_id,
+                    project_id=project_id,
+                    user_idea=user_idea,
+                    generated_docs=generated_docs,
+                    progress_callback=progress_callback,
+                    total=total,
+                    completed_count=len(completed_docs)
+                ))
+            
+            # Wait for all in batch to complete
+            # We use return_exceptions=False to fail fast if one crashes, or True to continue?
+            # Existing logic failed hard on critical docs but skipped others.
+            # Let's try to run all, if exceptions occur, handle them.
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for i, res in enumerate(batch_results):
+                doc_id = ready_batch[i]
+                if isinstance(res, Exception):
+                    logger.error(f"Error generating {doc_id}: {res}")
+                    # If a doc fails, we cannot generate its dependents.
+                    # We remove it from pending but do NOT add to completed.
+                    # This will naturally block dependents.
+                    pending_docs.remove(doc_id)
+                    
+                    # Update status as failed for this doc
+                    self.context_manager.update_project_status(
+                        project_id=project_id,
+                        status="failed", # Or partial?
+                        user_idea=user_idea,
+                        error=f"Failed to generate {doc_id}: {str(res)}"
+                    )
+                else:
+                    # Success
+                    d_id, d_result = res
+                    generated_docs[d_id] = d_result
+                    completed_docs.add(d_id)
+                    pending_docs.remove(d_id)
+                    
+                    # Add to results
+                    definition = self.definitions.get(d_id)
+                    results["files"][d_id] = {
+                        "content": d_result.get("content", ""),
+                        "path": d_result.get("file_path", ""),
+                        "file_path": d_result.get("file_path", ""),
+                    }
+                    
+                    if definition:
+                        results["documents"].append({
+                            "id": d_id,
+                            "name": definition.name,
+                            "category": definition.category,
+                            "file_path": d_result.get("file_path", ""),
+                            "generated_at": d_result.get("generated_at"),
+                            "dependencies": definition.dependencies,
+                        })
+                    
+                    # Update status incrementally
+                    self.context_manager.update_project_status(
+                        project_id=project_id,
+                        status="in_progress",
+                        user_idea=user_idea,
+                        completed_agents=list(completed_docs),
+                        results=results,
+                        selected_documents=selected_documents,
+                    )
+
+        # Finalize
+        workflow_duration = time.time() - workflow_start_time
+        logger.info(f"🎉 Workflow completed in {workflow_duration:.2f}s. Generated {len(completed_docs)}/{total} docs.")
+        
         results["summary"] = {
             "project_id": project_id,
             "generated_at": datetime.now().isoformat(),
-            "total_documents": len(completed),
+            "total_documents": len(completed_docs),
             "selected_documents": selected_documents,
         }
-
-        workflow_duration = time.time() - workflow_start_time
-        total_chars = sum(len(doc.get("content", "")) for doc in generated_docs.values())
-        total_words = sum(len(doc.get("content", "").split()) for doc in generated_docs.values())
         
-        logger.info(
-            "🎉 Document generation workflow completed [Project: %s] [Total: %d documents] [Generated: %d] [Duration: %.2fs] [Total content: %d chars, %d words]",
-            project_id,
-            total,
-            len(completed),
-            workflow_duration,
-            total_chars,
-            total_words
-        )
-        
-        # Log summary of all generated documents
-        logger.info(
-            "📋 Generation summary [Project: %s]:",
-            project_id
-        )
-        for doc_id, doc_data in generated_docs.items():
-            content_len = len(doc_data.get("content", ""))
-            quality = doc_data.get("quality_score", "N/A")
-            logger.info(
-                "  - %s: %d chars, quality: %s",
-                doc_id,
-                content_len,
-                f"{quality:.1f}/10" if isinstance(quality, (int, float)) else quality
-            )
-
         self.context_manager.update_project_status(
             project_id=project_id,
-            status="complete",
-            user_idea=user_idea,  # Include user_idea for consistency
-            completed_agents=completed,
+            status="complete" if len(completed_docs) == total else "partial_failure",
+            user_idea=user_idea,
+            completed_agents=list(completed_docs),
             results=results,
             selected_documents=selected_documents,
         )
-            
-        return results
 
+        return results

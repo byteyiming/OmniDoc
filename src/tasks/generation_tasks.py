@@ -13,7 +13,6 @@ from src.coordination.coordinator import WorkflowCoordinator
 from src.context.context_manager import ContextManager
 from src.tasks.celery_app import celery_app
 from src.utils.logger import get_logger
-from src.web.websocket_manager import websocket_manager
 
 logger = get_logger(__name__)
 
@@ -42,39 +41,66 @@ for handler in list(logger.handlers):
 
 def send_websocket_notification(project_id: str, message: Dict[str, Any]) -> None:
     """
-    Send WebSocket notification to connected clients.
-    
-    Note: In Celery worker, we can't create a new event loop because
-    asyncio.run() is already running. We'll use a thread-safe approach
-    or skip WebSocket notifications in worker (they're not critical).
+    Send WebSocket notification via Redis Pub/Sub.
+    This works even from Celery workers because it bypasses the in-memory
+    WebSocket manager of the worker process and talks directly to Redis,
+    which the main API server is listening to.
     """
     try:
-        # Check if we're in an async context (Celery worker with asyncio.run)
-        try:
-            loop = asyncio.get_running_loop()
-            # If we're here, we're in an async context - can't create new loop
-            # Use a thread to send the notification
-            import threading
-            def send_in_thread():
-                try:
-                    new_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(new_loop)
-                    new_loop.run_until_complete(websocket_manager.send_progress(project_id, message))
-                    new_loop.close()
-                except Exception as e:
-                    logger.debug(f"WebSocket notification failed in thread: {e}")
+        import redis
+        import os
+        import json
+        import ssl
+        from datetime import datetime
+        
+        # Use the same Redis URL as the app
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        
+        # Configure SSL if needed (for Upstash)
+        ssl_context = None
+        if "upstash.io" in redis_url or redis_url.startswith("rediss://"):
+            if redis_url.startswith("redis://"):
+                redis_url = redis_url.replace("redis://", "rediss://", 1)
+            # SSL context is needed for redis-py with ssl=True
+            # But for simple publication, we can rely on redis-py's internal handling
+            # or just use the same parameters as check_redis_available
+            pass
+
+        # Create a one-off connection for publishing
+        # Note: In a high-throughput system, we might want a global client
+        # But for Celery tasks, creating a connection is fine
+        
+        # Parse URL to handle SSL correctly if needed, similar to celery_app
+        from urllib.parse import urlparse
+        
+        is_ssl = "upstash.io" in redis_url or redis_url.startswith("rediss://")
+        parsed_url = urlparse(redis_url)
+        
+        if is_ssl:
+            client = redis.Redis(
+                host=parsed_url.hostname,
+                port=parsed_url.port or 6379,
+                password=parsed_url.password,
+                ssl=True,
+                ssl_cert_reqs=ssl.CERT_NONE,
+                decode_responses=True,
+                socket_timeout=5
+            )
+        else:
+            client = redis.Redis(
+                host=parsed_url.hostname,
+                port=parsed_url.port or 6379,
+                password=parsed_url.password,
+                decode_responses=True,
+                socket_timeout=5
+            )
             
-            thread = threading.Thread(target=send_in_thread, daemon=True)
-            thread.start()
-        except RuntimeError:
-            # No running event loop - safe to create new one
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(websocket_manager.send_progress(project_id, message))
-            loop.close()
+        payload = {**message, "timestamp": datetime.now().isoformat()}
+        client.publish(f"projects:{project_id}:events", json.dumps(payload))
+        client.close()
+            
     except Exception as exc:
-        # WebSocket notifications are not critical - log as debug to reduce noise
-        logger.debug(f"WebSocket notification skipped for project {project_id}: {exc}")
+        logger.debug(f"WebSocket notification failed: {exc}")
 
 
 @celery_app.task(

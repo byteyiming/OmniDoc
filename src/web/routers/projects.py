@@ -448,23 +448,7 @@ async def get_project_documents(
                     content = agent_output.content
             else:
                 # Try to find by document_type directly
-                from psycopg2.extras import RealDictCursor
-                conn = None
-                try:
-                    conn = cm._get_connection()
-                    cursor = conn.cursor(cursor_factory=RealDictCursor)
-                    cursor.execute("""
-                        SELECT content FROM agent_outputs 
-                        WHERE project_id = %s AND document_type = %s
-                        ORDER BY version DESC LIMIT 1
-                    """, (project_id, doc_id))
-                    row = cursor.fetchone()
-                    cursor.close()
-                    if row:
-                        content = row["content"]
-                finally:
-                    if conn:
-                        cm._put_connection(conn)
+                content = cm.get_document_content_by_type(project_id, doc_id)
         except Exception as exc:
             logger.warning("Failed to read document %s from database: %s", doc_id, exc)
 
@@ -552,23 +536,7 @@ async def get_single_document(request: Request, project_id: str, document_id: st
                 content = agent_output.content
         else:
             # Try to find by document_type directly
-            from psycopg2.extras import RealDictCursor
-            conn = None
-            try:
-                conn = cm._get_connection()
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
-                cursor.execute("""
-                    SELECT content FROM agent_outputs 
-                    WHERE project_id = %s AND document_type = %s
-                    ORDER BY version DESC LIMIT 1
-                """, (project_id, document_id))
-                row = cursor.fetchone()
-                cursor.close()
-                if row:
-                    content = row["content"]
-            finally:
-                if conn:
-                    cm._put_connection(conn)
+            content = cm.get_document_content_by_type(project_id, document_id)
     except Exception as exc:
         logger.warning("Failed to read document %s from database: %s", document_id, exc)
     

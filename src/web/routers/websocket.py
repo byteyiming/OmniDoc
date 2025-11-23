@@ -53,7 +53,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str) -> None:
         logger.warning("WebSocket connection rejected: too many connections for project %s", project_id)
         return
     
-        await websocket_manager.connect(websocket, project_id)
+    await websocket_manager.connect(websocket, project_id)
     request_id = str(uuid.uuid4())
     logger.info("WebSocket connected: project_id=%s [Request-ID: %s]", project_id, request_id)
     
