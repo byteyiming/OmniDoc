@@ -99,13 +99,23 @@ class ContextManager:
                 # Health check: verify connection is still alive
                 if conn.closed:
                     logger.warning(f"Connection from pool is closed, getting new connection (attempt {attempt + 1}/{max_retries})")
+                    # Decrement counter for the bad connection we already counted
+                    # (we incremented it when we first got it above)
+                    self._connection_stats["active_connections"] = max(0, self._connection_stats["active_connections"] - 1)
+                    
                     if self._connection_pool is not None:
                         try:
                             self._connection_pool.putconn(conn, close=True)
                         except Exception:
                             pass
-                    conn = psycopg2.connect(self.db_url) if self._connection_pool is None else self._connection_pool.getconn()
-                    if self._connection_pool is None:
+                        # Get replacement connection from pool
+                        conn = self._connection_pool.getconn()
+                        # Increment statistics for the new connection from pool
+                        self._connection_stats["pool_gets"] += 1
+                        self._connection_stats["active_connections"] += 1
+                    else:
+                        # Direct connection mode
+                        conn = psycopg2.connect(self.db_url)
                         self._connection_stats["total_created"] += 1
                         self._connection_stats["active_connections"] += 1
                 
