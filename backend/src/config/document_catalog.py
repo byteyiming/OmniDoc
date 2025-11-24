@@ -107,31 +107,49 @@ def _catalog_path() -> Path:
 def load_document_definitions() -> Dict[str, DocumentDefinition]:
     """Load and cache document definitions keyed by ID."""
     catalog_file = _catalog_path()
+    
+    # Double-check: if file doesn't exist, try to find it in common locations
     if not catalog_file.exists():
-        # Provide helpful error message with all attempted paths
         current_file = Path(__file__)
         backend_dir = current_file.parent.parent.parent
         project_root = backend_dir.parent
-        attempted_paths = [
-            str(catalog_file),
-            str(project_root / "backend" / "config" / "document_definitions.json"),
-            str(project_root / "config" / "document_definitions.json"),
+        
+        # Try all possible locations
+        possible_paths = [
+            catalog_file,  # The resolved path
+            project_root / "backend" / "config" / "document_definitions.json",  # New location
+            project_root / "config" / "document_definitions.json",  # Old location
+            Path("backend/config/document_definitions.json"),  # Relative from cwd
+            Path("config/document_definitions.json"),  # Relative from cwd (old)
         ]
-        env_path = os.getenv(DOCUMENT_CONFIG_ENV, "not set")
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Document catalog not found.\n"
-                f"  Attempted paths:\n"
-                f"    - {attempted_paths[0]}\n"
-                f"    - {attempted_paths[1]}\n"
-                f"    - {attempted_paths[2]}\n"
-                f"  DOCUMENT_CONFIG_PATH env var: {env_path}\n"
-                f"  Current working directory: {Path.cwd()}\n"
-                f"  Project root (detected): {project_root}\n"
-                f"  Please ensure document_definitions.json exists in backend/config/"
-            ),
-        )
+        
+        # Check if any of these exist
+        for possible_path in possible_paths:
+            if possible_path.exists():
+                logger.warning(
+                    f"Document catalog found at {possible_path} but was looking at {catalog_file}. "
+                    f"Using found path."
+                )
+                catalog_file = possible_path
+                break
+        
+        # If still not found, raise error with helpful message
+        if not catalog_file.exists():
+            env_path = os.getenv(DOCUMENT_CONFIG_ENV, "not set")
+            attempted_paths = [str(p) for p in possible_paths]
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Document catalog not found.\n"
+                    f"  Attempted paths:\n"
+                    + "\n".join(f"    - {p}" for p in attempted_paths)
+                    + f"\n  DOCUMENT_CONFIG_PATH env var: {env_path}\n"
+                    f"  Current working directory: {Path.cwd()}\n"
+                    f"  Project root (detected): {project_root}\n"
+                    f"  Please ensure document_definitions.json exists in backend/config/\n"
+                    f"  Or update DOCUMENT_CONFIG_PATH in .env file to: backend/config/document_definitions.json"
+                ),
+            )
 
     payload = json.loads(catalog_file.read_text(encoding="utf-8"))
     documents = payload.get("documents", [])
