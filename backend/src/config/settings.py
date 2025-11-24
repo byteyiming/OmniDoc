@@ -9,8 +9,20 @@ from pathlib import Path
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from .env file in project root
+# Try multiple locations: current dir, parent dir (for backend/), and project root
+env_paths = [
+    Path.cwd() / ".env",  # Current directory
+    Path(__file__).parent.parent.parent / ".env",  # Project root (from backend/src/config/)
+    Path(__file__).parent.parent.parent.parent / ".env",  # One more level up if needed
+]
+for env_path in env_paths:
+    if env_path.exists():
+        load_dotenv(env_path)
+        break
+else:
+    # Fallback to default behavior (searches from current dir up)
+    load_dotenv()
 
 
 class Environment(str, Enum):
