@@ -10,8 +10,8 @@ PROJECT_ROOT="$(cd "$BACKEND_DIR/.." && pwd)"
 
 cd "$BACKEND_DIR"
 
-# Check if virtual environment exists
-if [ ! -d ".venv" ]; then
+# Check if virtual environment exists (created at PROJECT_ROOT/.venv by setup.sh)
+if [ ! -d "$PROJECT_ROOT/.venv" ]; then
     echo "❌ Virtual environment not found. Please run ./backend/scripts/setup.sh first"
     exit 1
 fi
