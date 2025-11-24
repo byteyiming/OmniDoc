@@ -183,8 +183,20 @@ class BaseAgent(ABC):
                 model = phase_model
                 logger.debug(f"{self.agent_name} using phase {phase_number} model: {model}")
         
+        # Set default max_tokens for document generation if not provided
+        # Gemini 2.0 Flash supports up to 8192 output tokens, use 8192 for long documents
+        # For other providers, use 8192 tokens (equivalent to ~32KB of text)
+        if max_tokens is None:
+            if self.provider_name == "gemini":
+                # Gemini 2.0 Flash supports 8192 output tokens
+                max_tokens = 8192
+            else:
+                # Default for other providers
+                max_tokens = 8192
+            logger.debug(f"{self.agent_name} using default max_tokens: {max_tokens}")
+        
         model_to_use = model or self.model_name
-        logger.info(f"🚀 {self.agent_name} calling LLM (model: {model_to_use}, prompt length: {len(prompt)} chars, temperature: {temperature})")
+        logger.info(f"🚀 {self.agent_name} calling LLM (model: {model_to_use}, prompt length: {len(prompt)} chars, temperature: {temperature}, max_tokens: {max_tokens})")
         
         # Define make_request to accept prompt as parameter so cache key includes prompt content
         def make_request(prompt_str: str):
@@ -276,8 +288,20 @@ class BaseAgent(ABC):
                     model = phase_model
                     logger.debug(f"{self.agent_name} using phase {phase_to_use} model: {model}")
         
+        # Set default max_tokens for document generation if not provided
+        # Gemini 2.0 Flash supports up to 8192 output tokens, use 8192 for long documents
+        # For other providers, use 8192 tokens (equivalent to ~32KB of text)
+        if max_tokens is None:
+            if self.provider_name == "gemini":
+                # Gemini 2.0 Flash supports 8192 output tokens
+                max_tokens = 8192
+            else:
+                # Default for other providers
+                max_tokens = 8192
+            logger.debug(f"{self.agent_name} using default max_tokens (async): {max_tokens}")
+        
         model_to_use = model or self.model_name
-        logger.debug(f"{self.agent_name} calling LLM (async) (model: {model_to_use}, prompt length: {len(prompt)} chars)")
+        logger.debug(f"{self.agent_name} calling LLM (async) (model: {model_to_use}, prompt length: {len(prompt)} chars, max_tokens: {max_tokens})")
         
         # Define async make_request function
         async def make_request(prompt_str: str):
