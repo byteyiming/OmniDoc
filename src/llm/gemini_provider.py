@@ -47,11 +47,10 @@ class GeminiProvider(BaseLLMProvider):
         # Store default model
         self.default_model_name = default_model
         
-        # Initialize model with fallback chain
+        # Initialize model with fallback chain - all use gemini-2.0-flash
         model_priority = [
             default_model,
-            "gemini-2.0-flash",  # Recommended: Good quality, 15 RPM, 1M TPM
-            "gemini-2.0-flash-lite",  # Fallback: Lower quality but higher rate limits
+            "gemini-2.0-flash",  # Primary: Good quality, 15 RPM, 1M TPM
         ]
         
         for model_name in model_priority:

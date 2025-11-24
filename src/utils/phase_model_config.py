@@ -73,7 +73,11 @@ def get_model_for_phase(phase_number: int, provider_name: Optional[str] = None) 
     if default_model:
         return default_model.strip()
     
-    # No model specified, use provider's built-in default
+    # No model specified - for Gemini, default to gemini-2.0-flash
+    # For other providers, use provider's built-in default
+    if provider_name == "gemini":
+        return "gemini-2.0-flash"
+    
     return None
 
 
