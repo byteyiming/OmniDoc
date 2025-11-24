@@ -56,7 +56,7 @@ git clone <repository-url>
 cd OmniDoc
 
 # Run the setup script (installs everything)
-./scripts/setup.sh
+./backend/scripts/setup.sh
 ```
 
 The setup script will:
@@ -101,7 +101,7 @@ python backend/uvicorn_dev.py
 
 **Terminal 2 - Celery Worker (for background tasks):**
 ```bash
-./scripts/start_celery_worker.sh
+./backend/scripts/start_celery_worker.sh
 ```
 
 **Terminal 3 - Frontend (for development):**
@@ -122,24 +122,18 @@ pnpm dev  # or npm run dev
 
 ## 📚 Documentation
 
-All documentation is in the project root:
+All documentation is organized in the `docs/` directory:
 
 ### Core Documentation
-- **[BACKEND.md](BACKEND.md)** - Backend setup and API documentation
-- **[FRONTEND.md](FRONTEND.md)** - Frontend development guide
-- **[SECURITY.md](SECURITY.md)** - Security guide and best practices
-- **[MAINTENANCE.md](MAINTENANCE.md)** - Maintenance and monitoring guide
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design
+- **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Development guide and best practices
+- **[docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)** - Document dependencies reference
+- **[docs/UI_GUIDE.md](docs/UI_GUIDE.md)** - UI development guide and improvements
+- **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** - Performance optimization guide
+- **[docs/CHANGELOG.md](docs/CHANGELOG.md)** - Recent changes and improvements
 
-### Deployment Documentation
-- **[RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md)** - Backend deployment on Railway
-- **[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md)** - Frontend deployment on Vercel
-
-### Development & Improvement
-- **[DOCS_INDEX.md](DOCS_INDEX.md)** - Documentation index and quick reference
-- **[UI_IMPROVEMENTS.md](UI_IMPROVEMENTS.md)** - UI improvement roadmap (25 improvements)
-- **[IMPROVEMENTS.md](IMPROVEMENTS.md)** - Code improvement recommendations
-- **[docs/QUALITY_SCORING.md](docs/QUALITY_SCORING.md)** - Quality scoring system documentation
-- **[DOCUMENT_DEPENDENCIES.md](DOCUMENT_DEPENDENCIES.md)** - Document dependency reference
+### Testing
+- **[tests/README.md](tests/README.md)** - Testing guide and test structure
 
 ## 🏗️ Architecture
 
@@ -205,14 +199,19 @@ OmniDoc/
 │   ├── tasks/             # Celery background tasks
 │   ├── utils/             # Utilities (cache, parsers, etc.)
 │   └── web/               # FastAPI web application
+├── backend/               # Backend code
+│   ├── src/               # Source code
+│   ├── tests/             # Tests
+│   ├── scripts/           # Setup and utility scripts
+│   │   ├── setup.sh       # Main setup script
+│   │   └── start_celery_worker.sh  # Celery worker starter
+│   ├── config/            # Configuration files
+│   │   └── document_definitions.json  # Document catalog
+│   ├── pyproject.toml     # Python dependencies
+│   └── requirements.txt   # Python requirements
 ├── frontend/              # Next.js frontend
 ├── docs/                  # Generated documentation output
-├── scripts/               # Setup and utility scripts
-│   ├── setup.sh           # Main setup script
-│   └── start_celery_worker.sh  # Celery worker starter
-├── config/                # Configuration files
-│   └── document_definitions.json  # Document catalog
-├── .env                   # Environment configuration
+├── .env                   # Environment configuration (shared)
 ├── pyproject.toml         # Python dependencies
 └── README.md              # This file
 ```
@@ -290,7 +289,7 @@ pytest --cov=src --cov-report=html
 ### Setup Development Environment
 
 ```bash
-./scripts/setup.sh
+./backend/scripts/setup.sh
 ```
 
 ### Code Quality
@@ -338,7 +337,7 @@ celery -A src.tasks.celery_app inspect active
 celery -A src.tasks.celery_app worker --loglevel=debug
 ```
 
-See [BACKEND.md](BACKEND.md) and [PRODUCTION_SETUP.md](PRODUCTION_SETUP.md) for more troubleshooting tips.
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for more troubleshooting tips.
 
 ## 📦 Dependencies
 
@@ -379,10 +378,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ---
 
 **Need Help?** Check out:
-- [Documentation Index](DOCS_INDEX.md) - Find what you need quickly
-- [Backend Documentation](BACKEND.md) - API and architecture
-- [Frontend Documentation](FRONTEND.md) - UI development
-- [Railway Deployment](RAILWAY_DEPLOYMENT.md) - Backend deployment guide
-- [Vercel Deployment](VERCEL_DEPLOYMENT.md) - Frontend deployment guide
-- [UI Improvements](UI_IMPROVEMENTS.md) - UI enhancement roadmap
+- [Architecture Documentation](docs/ARCHITECTURE.md) - System design and components
+- [Development Guide](docs/DEVELOPMENT.md) - Development best practices
+- [UI Guide](docs/UI_GUIDE.md) - UI development guidelines
+- [Performance Guide](docs/PERFORMANCE.md) - Optimization strategies
 - [API Documentation](http://localhost:8000/docs) (when server is running)

@@ -60,6 +60,9 @@ htmlcov/
 coverage.xml
 *.cover
 
+# Node.js (frontend dependencies are in frontend/node_modules)
+node_modules/
+
 # OS files
 .DS_Store
 Thumbs.db

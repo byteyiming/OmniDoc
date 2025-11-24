@@ -15,7 +15,8 @@ from fastapi import HTTPException
 logger = logging.getLogger(__name__)
 
 DOCUMENT_CONFIG_ENV = "DOCUMENT_CONFIG_PATH"
-DEFAULT_CATALOG_PATH = Path("config/document_definitions.json")
+# Default path: backend/config/document_definitions.json (relative to project root)
+DEFAULT_CATALOG_PATH = Path("backend/config/document_definitions.json")
 QUALITY_RULES_PATH = Path("src/config/quality_rules.json")
 
 
@@ -43,21 +44,120 @@ class DocumentDefinition:
 
 
 def _catalog_path() -> Path:
+    """
+    Get the path to the document definitions catalog.
+    
+    Checks in order:
+    1. DOCUMENT_CONFIG_PATH environment variable (absolute or relative)
+    2. Default path: backend/config/document_definitions.json (relative to project root)
+    3. Fallback: config/document_definitions.json (for backward compatibility)
+    """
+    # Get project root (consistent for all path resolution)
+    current_file = Path(__file__)
+    # From backend/src/config/document_catalog.py -> backend/
+    backend_dir = current_file.parent.parent.parent
+    # From backend/ -> project root
+    project_root = backend_dir.parent
+    
     env_path = os.getenv(DOCUMENT_CONFIG_ENV)
     if env_path:
-        return Path(env_path)
-    return DEFAULT_CATALOG_PATH
+        path = Path(env_path)
+        # If absolute path, use as-is
+        if path.is_absolute():
+            return path
+        
+        # For relative paths, try multiple locations
+        # 1. Resolve from project root (most common case)
+        resolved_from_root = project_root / path
+        if resolved_from_root.exists():
+            return resolved_from_root
+        
+        # 2. Handle old-style paths like "config/document_definitions.json"
+        # Try new location: backend/config/document_definitions.json
+        if len(path.parts) > 0 and path.parts[0] == "config":
+            new_location = project_root / "backend" / path
+            if new_location.exists():
+                return new_location
+        
+        # 3. Try as-is from current working directory (for backward compatibility)
+        if path.exists():
+            return path
+        
+        # 4. Return the resolved path from project root (will fail with clear error)
+        return resolved_from_root
+    
+    # Default: try backend/config/document_definitions.json from project root
+    current_file = Path(__file__)
+    backend_dir = current_file.parent.parent.parent
+    project_root = backend_dir.parent
+    default_path = project_root / DEFAULT_CATALOG_PATH
+    if default_path.exists():
+        return default_path
+    
+    # Fallback: try old location for backward compatibility
+    fallback = project_root / "config" / "document_definitions.json"
+    if fallback.exists():
+        return fallback
+    
+    # Last resort: return default (will fail with clear error message)
+    return project_root / DEFAULT_CATALOG_PATH
 
 
-@lru_cache(maxsize=1)
+# Cache at module level to avoid reloading on every call
+_document_definitions_cache: Optional[Dict[str, DocumentDefinition]] = None
+
 def load_document_definitions() -> Dict[str, DocumentDefinition]:
     """Load and cache document definitions keyed by ID."""
+    global _document_definitions_cache
+    
+    # Return cached version if available
+    if _document_definitions_cache is not None:
+        return _document_definitions_cache
+    
     catalog_file = _catalog_path()
+    
+    # Double-check: if file doesn't exist, try to find it in common locations
     if not catalog_file.exists():
-        raise HTTPException(
-            status_code=500,
-            detail=f"Document catalog not found at {catalog_file}",
-        )
+        current_file = Path(__file__)
+        backend_dir = current_file.parent.parent.parent
+        project_root = backend_dir.parent
+        
+        # Try all possible locations
+        possible_paths = [
+            catalog_file,  # The resolved path
+            project_root / "backend" / "config" / "document_definitions.json",  # New location
+            project_root / "config" / "document_definitions.json",  # Old location
+            Path("backend/config/document_definitions.json"),  # Relative from cwd
+            Path("config/document_definitions.json"),  # Relative from cwd (old)
+        ]
+        
+        # Check if any of these exist
+        for possible_path in possible_paths:
+            if possible_path.exists():
+                logger.warning(
+                    f"Document catalog found at {possible_path} but was looking at {catalog_file}. "
+                    f"Using found path."
+                )
+                catalog_file = possible_path
+                break
+        
+        # If still not found, raise error with helpful message
+        if not catalog_file.exists():
+            env_path = os.getenv(DOCUMENT_CONFIG_ENV, "not set")
+            attempted_paths = [str(p) for p in possible_paths]
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Document catalog not found.\n"
+                    f"  Attempted paths:\n"
+                    + "\n".join(f"    - {p}" for p in attempted_paths)
+                    + f"\n  DOCUMENT_CONFIG_PATH env var: {env_path}\n"
+                    f"  Current working directory: {Path.cwd()}\n"
+                    f"  Project root (detected): {project_root}\n"
+                    f"  Please ensure document_definitions.json exists in backend/config/\n"
+                    f"  Or update DOCUMENT_CONFIG_PATH in .env file to: backend/config/document_definitions.json"
+                ),
+            )
 
     payload = json.loads(catalog_file.read_text(encoding="utf-8"))
     documents = payload.get("documents", [])
@@ -98,6 +198,8 @@ def load_document_definitions() -> Dict[str, DocumentDefinition]:
             special_key=raw.get("special_key"),
         )
 
+    # Cache the result
+    _document_definitions_cache = definitions
     return definitions
 
 

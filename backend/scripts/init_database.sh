@@ -1,7 +1,7 @@
 #!/bin/bash
 # Database Initialization Script
 # Creates all database tables for OmniDoc
-# Usage: ./scripts/init_database.sh
+# Usage: ./backend/scripts/init_database.sh
 
 set -e
 
@@ -26,7 +26,7 @@ echo ""
 # Check if .env exists
 if [ ! -f ".env" ]; then
     echo -e "${RED}❌ .env file not found${NC}"
-    echo "Please run ./scripts/setup.sh first to create .env file"
+    echo "Please run ./backend/scripts/setup.sh first to create .env file"
     exit 1
 fi
 
@@ -60,7 +60,7 @@ echo ""
 # Check if Python virtual environment exists
 if [ ! -d ".venv" ]; then
     echo -e "${RED}❌ Virtual environment not found${NC}"
-    echo "Please run ./scripts/setup.sh first"
+    echo "Please run ./backend/scripts/setup.sh first"
     exit 1
 fi
 
@@ -81,9 +81,9 @@ import os
 import sys
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+# Add backend directory to path (for src imports)
+backend_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(backend_dir))
 
 # Import ContextManager
 from src.context.context_manager import ContextManager
@@ -113,9 +113,9 @@ import os
 import sys
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+# Add backend directory to path (for src imports)
+backend_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(backend_dir))
 
 # Import ContextManager
 from src.context.context_manager import ContextManager
