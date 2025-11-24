@@ -6,7 +6,7 @@ import os
 import json
 import threading
 # Path removed - content is stored in database, not files
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from datetime import datetime
 from contextlib import contextmanager
 
